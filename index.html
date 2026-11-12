@@ -204,7 +204,7 @@ const S = {
   filtros: { repo: { tema: '', fuente: '', estado: '', texto: '' }, lineas: { tema: '' } },
   tab: 'buscador'
 };
-let sesionId = null;
+let sesionId; // undefined hasta el primer evento de sesión
 
 /* ================= Utilidades ================= */
 const $ = (s) => document.querySelector(s);
