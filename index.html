@@ -295,7 +295,7 @@ const SUPA_KEY = 'sb_publishable_p3UzLDI8PObsU8BCQ_wR_w_JirIbSoT';
 const sb = window.supabase ? window.supabase.createClient(SUPA_URL, SUPA_KEY) : null;
 
 const TABS = [
-  ['panel', 'Panel'], ['buscador', 'Buscador'], ['repositorio', 'Repositorio'], ['analisis', 'Análisis asistido'],
+  ['panel', 'Panel'], ['buscador', 'Buscador'], ['repositorio', 'Repositorio'], ['importar', 'Importar'], ['analisis', 'Análisis asistido'],
   ['lineas', 'Líneas'], ['indicador', 'Indicador'], ['cuenta', 'Mi cuenta']
 ];
 const ROLES = [['investigador', 'Investigador'], ['validador', 'Validador'], ['admin', 'Administrador']];
@@ -324,6 +324,29 @@ const TEXTOS_PROV = ['corporacion', 'jurisdiccion', 'numero', 'fecha', 'enlace',
   'obiter', 'decisum', 'riesgo', 'recomendacion', 'texto_fuente'];
 const DIAS_AVISO = 30;
 
+// Importación: campos de la plantilla de providencias y sinónimos de cabecera (se comparan normalizados: sin tildes, en minúsculas).
+const CAMPOS_IMP = [
+  ['identificador_origen', 'Identificador de origen'], ['corporacion', 'Corporación'], ['jurisdiccion', 'Jurisdicción'],
+  ['numero', 'Número de providencia'], ['fecha', 'Fecha'], ['enlace', 'Enlace (se guarda también como URL de origen)'],
+  ['problema_juridico', 'Problema jurídico'], ['hechos', 'Hechos'], ['ratio', 'Ratio'], ['obiter', 'Obiter'],
+  ['decisum', 'Decisum'], ['texto_fuente', 'Texto de la fuente'], ['tendencia', 'Tendencia']
+];
+const SINONIMOS_IMP = {
+  identificador_origen: ['identificador', 'id', 'id origen', 'codigo', 'codigo origen'],
+  corporacion: ['corte', 'tribunal', 'organo', 'entidad', 'despacho'],
+  jurisdiccion: ['jurisdiccional', 'ambito', 'sala'],
+  numero: ['numero de providencia', 'radicado', 'radicacion', 'providencia', 'sentencia', 'expediente', 'referencia'],
+  fecha: ['fecha de providencia', 'fecha providencia', 'fecha de la providencia', 'fecha de sentencia'],
+  enlace: ['url', 'link', 'url origen', 'url de origen', 'url de la consulta', 'direccion'],
+  problema_juridico: ['pregunta juridica', 'tema', 'tema juridico'],
+  ratio: ['ratio decidendi', 'ementa', 'regla'],
+  obiter: ['obiter dicta', 'obiter dictum'],
+  decisum: ['resuelve', 'resolucion', 'decision', 'fallo'],
+  texto_fuente: ['texto', 'texto completo', 'texto de la fuente', 'texto providencia'],
+  tendencia: ['clasificacion', 'sentido']
+};
+const LIMITE_FILAS = 2000;
+
 // Iconos SVG inline (trazo, 24x24). Solo se usan con datos fijos del código.
 const PATHS = {
   panel: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
@@ -339,7 +362,8 @@ const PATHS = {
   check: '<path d="M4 12.5l5 5L20 6.5"/>',
   reloj: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   bandera: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
-  doc: '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/>'
+  doc: '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/>',
+  importar: '<path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15"/>'
 };
 const ico = (nombre, tam) => `<svg class="ico" width="${tam || 18}" height="${tam || 18}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${PATHS[nombre] || ''}</svg>`;
 
@@ -347,7 +371,7 @@ const ico = (nombre, tam) => `<svg class="ico" width="${tam || 18}" height="${ta
 const S = {
   user: null, perfil: null,
   fuentes: [], tematicas: [], lineas: [], providencias: [], perfiles: [], config: null,
-  provCargadas: false,
+  provCargadas: false, capturas: [], capTotal: 0, lotes: null, imp: imp0(),
   authModo: 'ingresar',
   busqueda: '', buscado: false,
   filtros: { repo: { tema: '', fuente: '', estado: '', texto: '' }, lineas: { tema: '' } },
@@ -431,6 +455,159 @@ function calcIndicador(hoy) {
   const mostrar = aprobado && prio.length > 0;
   const pct = mostrar ? Math.round((cumplen.size / prio.length) * 1000) / 10 : null;
   return { aprobado, prio, cumplen: cumplen.size, mostrar, pct, faltan };
+}
+
+/* ================= Importación: funciones puras (sin DOM ni red) ================= */
+function normCab(s) {
+  return norm(s).replace(/[_\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+// Cuenta apariciones de un separador fuera de comillas.
+function contarFueraDeComillas(linea, sep) {
+  let comillas = false, n = 0;
+  for (const c of linea) {
+    if (c === '"') comillas = !comillas;
+    else if (!comillas && c === sep) n++;
+  }
+  return n;
+}
+// Tabulación, punto y coma o coma: gana el que más aparezca en la primera línea con datos.
+function detectarSeparador(texto) {
+  const primera = String(texto || '').replace(/^﻿/, '').split(/\r\n|\n|\r/).find((l) => l.trim() !== '') || '';
+  let mejor = ',', max = 0;
+  for (const s of ['\t', ';', ',']) {
+    const n = contarFueraDeComillas(primera, s);
+    if (n > max) { max = n; mejor = s; }
+  }
+  return mejor;
+}
+// Parser CSV/TSV: comillas dobles (con "" como escape), saltos de línea dentro de comillas y separador detectado.
+// Devuelve registros con su número de fila de Excel (la cabecera es la fila 1). Omite filas vacías.
+function parsearCSV(texto) {
+  const t = String(texto || '').replace(/^﻿/, '');
+  const sep = detectarSeparador(t);
+  const registros = [];
+  let celdas = [], campo = '', comillas = false, n = 1;
+  const cerrarRegistro = () => {
+    celdas.push(campo);
+    registros.push({ n: n, celdas: celdas });
+    celdas = []; campo = ''; n++;
+  };
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (comillas) {
+      if (c === '"') {
+        if (t[i + 1] === '"') { campo += '"'; i++; }
+        else comillas = false;
+      } else campo += c;
+    } else if (c === '"' && campo === '') {
+      comillas = true;
+    } else if (c === sep) {
+      celdas.push(campo); campo = '';
+    } else if (c === '\r' || c === '\n') {
+      if (c === '\r' && t[i + 1] === '\n') i++;
+      cerrarRegistro();
+    } else campo += c;
+  }
+  if (campo !== '' || celdas.length) cerrarRegistro();
+  return { sep: sep, registros: registros.filter((r) => r.celdas.some((x) => x.trim() !== '')) };
+}
+// Cabecera + filas de datos. Lanza un Error con mensaje para el usuario si no hay datos.
+function tablaDesde(texto) {
+  const { sep, registros } = parsearCSV(texto);
+  if (!registros.length) throw new Error('No se encontraron filas. Revisa que el archivo o el texto no esté vacío.');
+  const cabeceras = registros[0].celdas.map((c) => String(c).trim());
+  const datos = registros.slice(1);
+  if (!datos.length) throw new Error('El archivo solo tiene cabeceras. Agrega al menos una fila de datos.');
+  return { sep: sep, cabeceras: cabeceras, registros: datos };
+}
+function pad2(n) { return String(n).padStart(2, '0'); }
+// Acepta AAAA-MM-DD (con hora opcional) y DD/MM/AAAA. Devuelve AAAA-MM-DD, o null si está vacía; valida = false si no es una fecha real.
+function convertirFecha(valor) {
+  const t = String(valor ?? '').trim();
+  if (!t) return { fecha: null, valida: true };
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T].*)?$/.exec(t);
+  const dmy = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(t);
+  let y, m, d;
+  if (iso) { y = +iso[1]; m = +iso[2]; d = +iso[3]; }
+  else if (dmy) { d = +dmy[1]; m = +dmy[2]; y = +dmy[3]; }
+  else return { fecha: null, valida: false };
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return { fecha: null, valida: false };
+  return { fecha: y + '-' + pad2(m) + '-' + pad2(d), valida: true };
+}
+// Tendencia válida o sin_clasificar. Tolera tildes, mayúsculas y espacios ("Tensión", "sin clasificar").
+function normTendencia(valor) {
+  const t = normCab(valor).replace(/ /g, '_');
+  return TENDENCIAS.some((x) => x[0] === t) ? t : 'sin_clasificar';
+}
+// Asigna a cada campo de la plantilla el índice de columna (o -1) buscando cabeceras por nombre normalizado.
+function detectarMapa(cabeceras) {
+  const cab = cabeceras.map(normCab);
+  const usadas = new Set();
+  const mapa = {};
+  for (const [campo] of CAMPOS_IMP) {
+    const candidatos = [campo, ...(SINONIMOS_IMP[campo] || [])].map(normCab);
+    let idx = -1;
+    for (const cand of candidatos) {
+      const j = cab.findIndex((h, i) => h === cand && !usadas.has(i));
+      if (j >= 0) { idx = j; break; }
+    }
+    if (idx >= 0) usadas.add(idx);
+    mapa[campo] = idx;
+  }
+  return mapa;
+}
+// Convierte las filas según el mapeo. Sin identificador (ni corporación y número) la fila se rechaza.
+// Las columnas no asignadas van a metadatos con el nombre de su cabecera.
+function construirFilas(tabla, mapa) {
+  const usadas = new Set(Object.values(mapa).filter((i) => i >= 0));
+  const validas = [], rechazos = [], avisos = [];
+  for (const r of tabla.registros) {
+    const c = r.celdas;
+    const v = (campo) => (mapa[campo] >= 0 ? String(c[mapa[campo]] ?? '').trim() : '');
+    const corp = v('corporacion'), num = v('numero');
+    const ident = v('identificador_origen') || (corp && num ? corp + '|' + num : '');
+    if (!ident) {
+      rechazos.push({ fila: r.n, motivo: 'Sin identificador: indica identificador_origen, o corporación y número.' });
+      continue;
+    }
+    const fecha = convertirFecha(v('fecha'));
+    if (!fecha.valida) avisos.push({ fila: r.n, motivo: '«' + v('fecha') + '» no es una fecha válida (usa AAAA-MM-DD o DD/MM/AAAA): se guardará vacía.' });
+    const enlaceTxt = v('enlace');
+    const enlace = enlaceTxt ? urlSegura(enlaceTxt) : null;
+    if (enlaceTxt && !enlace) avisos.push({ fila: r.n, motivo: 'Enlace no válido (debe empezar por http:// o https://): se guardará vacío.' });
+    const metadatos = {};
+    tabla.cabeceras.forEach((h, i) => {
+      const val = String(c[i] ?? '').trim();
+      if (!usadas.has(i) && val !== '') metadatos[h || 'columna_' + (i + 1)] = val;
+    });
+    validas.push({
+      fila: r.n, identificador_origen: ident,
+      corporacion: vacioANull(corp), jurisdiccion: vacioANull(v('jurisdiccion')), numero: vacioANull(num),
+      fecha: fecha.fecha, enlace: enlace, url_origen: enlace,
+      problema_juridico: vacioANull(v('problema_juridico')), hechos: vacioANull(v('hechos')), ratio: vacioANull(v('ratio')),
+      obiter: vacioANull(v('obiter')), decisum: vacioANull(v('decisum')), texto_fuente: vacioANull(v('texto_fuente')),
+      tendencia: normTendencia(v('tendencia')), metadatos: metadatos
+    });
+  }
+  return { validas: validas, rechazos: rechazos, avisos: avisos };
+}
+function csvEscape(v) {
+  const s = String(v ?? '');
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+async function sha256Hex(texto) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(texto)));
+  return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+// Hash del texto de la fuente; null si no hay texto o el navegador no ofrece crypto.subtle.
+async function hashSeguro(texto) {
+  if (!texto) return null;
+  try { return await sha256Hex(texto); } catch (e) { return null; }
+}
+function imp0() {
+  return { paso: 1, fuente: '', tema: '', texto: '', pegado: '', origen: '', archivo: '', formato: '',
+    tabla: null, mapa: {}, prev: null, res: null, aviso: '', error: '' };
 }
 
 function msgError(err) {
@@ -574,6 +751,7 @@ async function manejarSesion(session) {
   if (id === sesionId) return;
   sesionId = id;
   S.user = user; S.perfil = null; S.provCargadas = false; S.providencias = [];
+  S.capturas = []; S.capTotal = 0; S.lotes = null; S.imp = imp0();
   S.busqueda = ''; S.buscado = false; S.tab = 'panel';
   if (!user) { renderAuth(); return; }
   renderCargando();
@@ -679,9 +857,13 @@ function renderShell() {
 // Cambia de pestaña, cargando lo necesario antes de pintar.
 async function irA(tab) {
   S.tab = tab;
-  if ((tab === 'panel' || tab === 'repositorio') && !S.provCargadas) {
+  const cargas = [];
+  if ((tab === 'panel' || tab === 'repositorio') && !S.provCargadas) cargas.push(cargarProvidencias());
+  if (tab === 'panel' || tab === 'buscador' || tab === 'importar') cargas.push(cargarCapturas());
+  if (tab === 'importar') cargas.push(cargarLotes());
+  if (cargas.length) {
     renderTab(); // muestra el estado de carga
-    await cargarProvidencias();
+    await Promise.all(cargas);
   }
   renderTab();
 }
@@ -695,11 +877,12 @@ function renderTab() {
   const m = $('#main');
   if (!m) return;
   const vistas = {
-    panel: vistaPanel, buscador: vistaBuscador, repositorio: vistaRepo, analisis: vistaAnalisis,
+    panel: vistaPanel, buscador: vistaBuscador, repositorio: vistaRepo, importar: vistaImportar, analisis: vistaAnalisis,
     lineas: vistaLineas, indicador: vistaIndicador, cuenta: vistaCuenta
   };
   m.innerHTML = vistas[S.tab]();
-  if (S.tab === 'buscador') renderBusqueda();
+  if (S.tab === 'buscador') { renderBusqueda(); renderBusqCapturas(); }
+  if (S.tab === 'importar') renderImpHistorial();
   if (S.tab === 'repositorio') renderRepoLista();
   if (S.tab === 'lineas') renderLineas();
   // Transición de la vista (fade + slide) y entrada escalonada.
@@ -820,6 +1003,7 @@ function vistaPanel() {
     ${kpi('Validadas', nVal, pctDe(nVal), 'check', 'ok')}
     ${kpi('Pendientes', nPend, nPend ? 'esperan validación humana' : 'Ninguna pendiente', 'reloj', nPend ? 'alerta' : '')}
     ${kpi('Priorizadas', ind.prio.length, 'temáticas priorizadas', 'bandera')}
+    ${kpi('Capturas', S.capTotal || 0, 'búsquedas e importaciones registradas', 'buscador')}
   </div>`;
 
   // Por fuente
@@ -927,6 +1111,7 @@ function vistaPanel() {
         ${ultimasHtml}
       </article>
     </div>
+    <div class="dash">${tarjetaCobertura()}</div>
   </section>`;
 }
 
@@ -952,6 +1137,10 @@ function vistaBuscador() {
       <button class="btn" type="submit">Buscar</button>
     </form>
     <div id="busq-resultados"></div>
+    <section class="grupo" style="margin-top:14px">
+      <h2>Búsquedas registradas</h2>
+      <div id="busq-capturas"></div>
+    </section>
   </section>`;
 }
 
@@ -985,9 +1174,531 @@ function tarjetaFuente(f, tema) {
     <div class="acciones">
       <button class="btn sec" data-accion="abrir-fuente" data-id="${id}">Abrir fuente</button>
       <button class="btn sec" data-accion="copiar-frase" data-id="${id}">Copiar frase</button>
+      <button class="btn sec" data-accion="registrar-busqueda" data-id="${id}" data-tema="${esc(tema ? tema.id : '')}">Registrar búsqueda</button>
       <button class="btn" data-accion="registrar" data-id="${id}" data-tema="${esc(tema ? tema.id : '')}">Registrar hallazgo</button>
     </div>
   </article>`;
+}
+
+/* ================= 1b. Capturas (registro de búsquedas) ================= */
+const METODO_TXT = { asistido: 'Asistido', lote: 'Lote', automatico: 'Automático' };
+
+// Últimas 200 capturas (más reciente primero) y total de filas de jr_capturas.
+async function cargarCapturas() {
+  try {
+    const { count, error } = await sb.from('jr_capturas').select('id', { count: 'exact', head: true });
+    if (error) throw error;
+    S.capTotal = count || 0;
+    S.capturas = await q(sb.from('jr_capturas').select('*').order('creado', { ascending: false }).limit(200)) || [];
+  } catch (e) {
+    toast(msgError(e), true);
+  }
+}
+
+function abrirRegistroBusqueda(fuenteId, temaId) {
+  const f = fuenteDe(fuenteId);
+  abrirModal('Registrar búsqueda', `
+  <form id="form-captura" class="formulario">
+    <input type="hidden" name="fuente_id" value="${esc(fuenteId)}">
+    <p class="suave">Fuente: <strong>${esc(f ? f.nombre : 'Sin fuente')}</strong>. Se guarda como búsqueda asistida.</p>
+    <label>Término buscado *<input name="termino" required maxlength="300" value="${esc(S.busqueda)}"></label>
+    <div class="grid2">
+      <label>Número de resultados<input type="number" name="conteo" min="0" step="1" inputmode="numeric"></label>
+      <label>Tema<select name="tematica_id">${opciones(S.tematicas.map((t) => [t.id, t.nombre]), temaId, 'Sin tema')}</select></label>
+    </div>
+    <label>URL de la consulta (opcional)<input type="url" name="url_consulta" placeholder="https://"></label>
+    <label>Nota (opcional)<textarea name="nota" rows="2" maxlength="1000"></textarea></label>
+    <div class="acciones dcha">
+      <button type="button" class="btn sec" data-accion="cerrar-modal">Cancelar</button>
+      <button class="btn" type="submit">Guardar búsqueda</button>
+    </div>
+  </form>`);
+}
+
+async function guardarCaptura(form) {
+  const fd = new FormData(form);
+  const termino = vacioANull(fd.get('termino'));
+  if (!termino) { toast('Escribe el término buscado.', true); return; }
+  const conteoTxt = vacioANull(fd.get('conteo'));
+  if (conteoTxt !== null && !/^\d+$/.test(conteoTxt)) {
+    toast('El número de resultados debe ser un entero mayor o igual a 0.', true);
+    return;
+  }
+  const urlTxt = vacioANull(fd.get('url_consulta'));
+  let url = null;
+  if (urlTxt) {
+    url = urlSegura(urlTxt);
+    if (!url) { toast('La URL de la consulta debe empezar por http:// o https://', true); return; }
+  }
+  await q(sb.from('jr_capturas').insert({
+    fuente_id: vacioANull(fd.get('fuente_id')),
+    tematica_id: vacioANull(fd.get('tematica_id')),
+    termino: termino,
+    url_consulta: url,
+    conteo_resultados: conteoTxt === null ? null : Number(conteoTxt),
+    metodo: 'asistido',
+    nota: vacioANull(fd.get('nota'))
+  }));
+  cerrarModal();
+  toast('Búsqueda registrada. Queda listada abajo.');
+  await cargarCapturas();
+  if (S.tab === 'buscador') renderBusqCapturas();
+  else if (S.tab === 'panel') renderTab();
+}
+
+function filaCaptura(c) {
+  const f = fuenteDe(c.fuente_id);
+  const t = tematicaDe(c.tematica_id);
+  const u = c.url_consulta ? urlSegura(c.url_consulta) : null;
+  const conteo = c.conteo_resultados === null || c.conteo_resultados === undefined ? '—' : c.conteo_resultados;
+  return `
+  <tr>
+    <td><strong>${esc(c.termino)}</strong>${u ? '<br><a class="suave" href="' + esc(u) + '" target="_blank" rel="noopener">Ver consulta</a>' : ''}</td>
+    <td>${esc(f ? f.nombre : '—')}</td>
+    <td>${esc(t ? t.nombre : '—')}</td>
+    <td class="num">${esc(conteo)}</td>
+    <td><span class="chip">${esc(METODO_TXT[c.metodo] || c.metodo || '—')}</span></td>
+    <td>${fmtFecha(c.creado)}</td>
+  </tr>`;
+}
+
+function renderBusqCapturas() {
+  const el = $('#busq-capturas');
+  if (!el) return;
+  const lista = S.capturas.slice(0, 10);
+  el.innerHTML = lista.length
+    ? `<div class="tabla-wrap"><table class="tabla">
+        <thead><tr><th>Término</th><th>Fuente</th><th>Tema</th><th>Resultados</th><th>Método</th><th>Fecha</th></tr></thead>
+        <tbody>${lista.map(filaCaptura).join('')}</tbody>
+      </table></div>`
+    : '<p class="vacio">Todavía no hay búsquedas registradas. Después de buscar, pulsa «Registrar búsqueda» en una fuente.</p>';
+}
+
+// Panel: última captura de cada fuente, a partir de las últimas 200 capturas.
+function tarjetaCobertura() {
+  let cuerpo;
+  if (!S.capturas.length) {
+    cuerpo = '<p class="vacio">Todavía no hay capturas. Registra una búsqueda desde el Buscador o importa un lote y verás aquí la cobertura de cada fuente.</p>';
+  } else if (!S.fuentes.length) {
+    cuerpo = '<p class="vacio">No hay fuentes registradas.</p>';
+  } else {
+    const ultima = new Map();
+    S.capturas.forEach((c) => { const k = String(c.fuente_id); if (!ultima.has(k)) ultima.set(k, c); });
+    cuerpo = `<ul class="alertas">${S.fuentes.map((f) => {
+      const c = ultima.get(String(f.id));
+      const conteo = c && (c.conteo_resultados === null || c.conteo_resultados === undefined) ? '—' : (c ? c.conteo_resultados : '');
+      return `<li><div><strong>${esc(f.nombre)}</strong>${c
+        ? `<span class="suave">Última captura: ${fmtFecha(c.creado)} · ${esc(conteo)} resultados</span>`
+        : '<span class="suave">Sin capturas en las últimas 200</span>'}</div></li>`;
+    }).join('')}</ul>`;
+  }
+  return `
+  <article class="tarjeta">
+    <h2>Cobertura por fuente</h2>
+    <p class="suave">Última captura de cada fuente, leída de las últimas 200 capturas.</p>
+    ${cuerpo}
+  </article>`;
+}
+
+/* ================= 1c. Importar lotes ================= */
+const PASOS_IMP = [[1, 'Fuente y tema'], [2, 'Archivo o texto'], [3, 'Columnas'], [4, 'Vista previa']];
+
+function msgImp(txt) { return `<p class="msg" role="alert">${esc(txt || '')}</p>`; }
+
+async function cargarLotes() {
+  S.lotes = (await leer(sb.from('jr_lotes').select('*').order('creado', { ascending: false }).limit(10), [])) || [];
+}
+
+function leerArchivo(file) {
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { S.imp.aviso = 'El archivo supera 5 MB. Divídelo en partes.'; renderTab(); return; }
+  const lector = new FileReader();
+  lector.onload = () => {
+    const texto = String(lector.result || '');
+    S.imp.texto = texto;
+    S.imp.origen = 'archivo';
+    S.imp.archivo = file.name;
+    S.imp.aviso = texto.includes('�') ? 'El archivo no parece estar en UTF-8. En Excel, guárdalo como «CSV UTF-8» y vuelve a subirlo.' : '';
+    renderTab();
+  };
+  lector.onerror = () => toast('No se pudo leer el archivo.', true);
+  lector.readAsText(file, 'utf-8');
+}
+
+function importarTexto() {
+  const I = S.imp;
+  I.aviso = '';
+  if (I.pegado.trim()) { I.texto = I.pegado; I.origen = 'pegado'; I.archivo = ''; }
+  else if (!I.texto || !I.texto.trim()) { I.aviso = 'Sube un archivo o pega la tabla antes de continuar.'; renderTab(); return; }
+  let tabla;
+  try { tabla = tablaDesde(I.texto); }
+  catch (e) { I.aviso = e.message; renderTab(); return; }
+  const n = tabla.registros.length;
+  if (n > LIMITE_FILAS) {
+    I.aviso = `El archivo tiene ${n} filas de datos y el límite es ${LIMITE_FILAS} por archivo. Divídelo en partes y vuelve a importar.`;
+    renderTab();
+    return;
+  }
+  I.tabla = tabla;
+  I.formato = tabla.sep === '\t' ? 'tsv' : 'csv';
+  I.mapa = detectarMapa(tabla.cabeceras);
+  I.prev = null;
+  I.paso = 3;
+  renderTab();
+}
+
+function mapearColumnas(form) {
+  const I = S.imp;
+  const fd = new FormData(form);
+  const mapa = {};
+  CAMPOS_IMP.forEach(([c]) => {
+    const v = fd.get('m_' + c);
+    mapa[c] = (v === null || v === '') ? -1 : Number(v);
+  });
+  if (mapa.identificador_origen < 0 && (mapa.corporacion < 0 || mapa.numero < 0)) {
+    I.aviso = 'Asigna identificador de origen, o bien corporación y número, para poder identificar cada providencia.';
+    renderTab();
+    return;
+  }
+  I.mapa = mapa;
+  I.aviso = '';
+  I.paso = 4;
+  I.prev = null;
+  renderTab();
+  prepararPrevia().catch((err) => {
+    S.imp.paso = 3;
+    S.imp.aviso = msgError(err);
+    renderTab();
+  });
+}
+
+// Identificadores ya presentes en la fuente. Consultas por tandas de 200; los valores con caracteres especiales van uno a uno.
+async function existentesEnBD(fuenteId, ids) {
+  const existentes = new Set();
+  const unicos = [...new Set(ids)];
+  const simples = unicos.filter((x) => !/[",()\\]/.test(x));
+  const raros = unicos.filter((x) => /[",()\\]/.test(x));
+  for (let i = 0; i < simples.length; i += 200) {
+    const filas = await q(sb.from('jr_providencias').select('identificador_origen')
+      .eq('fuente_id', fuenteId).in('identificador_origen', simples.slice(i, i + 200)));
+    (filas || []).forEach((r) => existentes.add(r.identificador_origen));
+  }
+  for (const x of raros) {
+    const filas = await q(sb.from('jr_providencias').select('identificador_origen').eq('fuente_id', fuenteId).eq('identificador_origen', x));
+    (filas || []).forEach((r) => existentes.add(r.identificador_origen));
+  }
+  return existentes;
+}
+
+async function prepararPrevia() {
+  const I = S.imp;
+  const res = construirFilas(I.tabla, I.mapa);
+  const ya = await existentesEnBD(I.fuente, res.validas.map((f) => f.identificador_origen));
+  const vistos = new Set();
+  const nuevas = [];
+  let dupBD = 0, dupArchivo = 0;
+  for (const f of res.validas) {
+    if (vistos.has(f.identificador_origen)) { dupArchivo++; continue; }
+    vistos.add(f.identificador_origen);
+    if (ya.has(f.identificador_origen)) { dupBD++; continue; }
+    nuevas.push(f);
+  }
+  I.prev = { res: res, nuevas: nuevas, dupBD: dupBD, dupArchivo: dupArchivo };
+  if (S.tab === 'importar' && I.paso === 4) renderTab();
+}
+
+function listaErrores(lista, titulo, clase) {
+  if (!lista.length) return '';
+  const max = 50;
+  return `
+  <h2>${esc(titulo)} (${lista.length})</h2>
+  <ul class="alertas">${lista.slice(0, max).map((x) => `<li><span class="badge ${esc(clase)}">Fila ${esc(x.fila)}</span><div><span>${esc(x.motivo)}</span></div></li>`).join('')}</ul>
+  ${lista.length > max ? `<p class="nota-pie">Y ${lista.length - max} más.</p>` : ''}`;
+}
+
+function htmlImpPaso1() {
+  const I = S.imp;
+  if (!S.fuentes.length || !S.tematicas.length) {
+    return '<p class="vacio">Necesitas al menos una fuente y una temática registradas para importar.</p>';
+  }
+  return `
+  <form id="form-imp-1" class="formulario">
+    <h2>1. Fuente y temática</h2>
+    <p class="suave">Todo el lote se asigna a esta fuente y a esta temática.</p>
+    <div class="grid2">
+      <label>Fuente *<select name="fuente_id" required>${opciones(S.fuentes.map((f) => [f.id, f.nombre]), I.fuente, 'Selecciona…')}</select></label>
+      <label>Temática *<select name="tematica_id" required>${opciones(S.tematicas.map((t) => [t.id, t.nombre]), I.tema, 'Selecciona…')}</select></label>
+    </div>
+    ${msgImp(I.aviso)}
+    <div class="acciones dcha"><button class="btn" type="submit">Continuar</button></div>
+  </form>`;
+}
+
+function htmlImpPaso2() {
+  const I = S.imp;
+  return `
+  <form id="form-imp-2" class="formulario">
+    <h2>2. Archivo o texto</h2>
+    <div class="grid2">
+      <label>Archivo CSV o TSV
+        <input type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values" data-imp="archivo">
+      </label>
+      <p class="suave">${I.archivo ? 'Archivo cargado: <strong>' + esc(I.archivo) + '</strong>.' : 'Sin archivo cargado.'} El separador (coma, punto y coma o tabulación) se detecta solo. Límite: ${LIMITE_FILAS} filas por archivo.</p>
+    </div>
+    <label>O pega aquí la tabla copiada desde Excel
+      <textarea name="pegado" rows="8" data-imp="pegado" placeholder="Copia las celdas con sus cabeceras desde Excel y pégalas aquí">${esc(I.pegado)}</textarea>
+    </label>
+    ${msgImp(I.aviso)}
+    <div class="acciones dcha">
+      <button type="button" class="btn sec" data-accion="imp-paso" data-paso="1">Atrás</button>
+      <button class="btn" type="submit">Continuar</button>
+    </div>
+  </form>`;
+}
+
+function htmlImpPaso3() {
+  const I = S.imp;
+  const cab = I.tabla.cabeceras;
+  const usadas = new Set(Object.values(I.mapa).filter((i) => i >= 0));
+  const sinAsignar = cab.map((h, i) => ({ h: h, i: i })).filter((x) => !usadas.has(x.i));
+  const detectadas = Object.values(I.mapa).filter((i) => i >= 0).length;
+  const etiqueta = (h, i) => esc(h || 'Columna ' + (i + 1));
+  const opts = (campo) => `<option value="" ${I.mapa[campo] < 0 ? 'selected' : ''}>— No usar —</option>`
+    + cab.map((h, i) => `<option value="${i}" ${I.mapa[campo] === i ? 'selected' : ''}>${etiqueta(h, i)}</option>`).join('');
+  return `
+  <form id="form-imp-3" class="formulario">
+    <h2>3. Columnas</h2>
+    <p class="suave">Se reconocieron ${detectadas} de ${CAMPOS_IMP.length} campos por el nombre de la cabecera. Revisa cada uno antes de continuar.</p>
+    <div class="grid2">
+      ${CAMPOS_IMP.map(([c, t]) => `<label>${esc(t)}<select name="m_${esc(c)}">${opts(c)}</select></label>`).join('')}
+    </div>
+    <p class="nota-fija">Las columnas sin asignar se guardan en metadatos con su cabecera: ${sinAsignar.length ? sinAsignar.map((x) => etiqueta(x.h, x.i)).join(', ') : 'ninguna'}.</p>
+    ${msgImp(I.aviso)}
+    <div class="acciones dcha">
+      <button type="button" class="btn sec" data-accion="imp-paso" data-paso="2">Atrás</button>
+      <button class="btn" type="submit">Continuar</button>
+    </div>
+  </form>`;
+}
+
+function htmlImpPaso4() {
+  const I = S.imp;
+  const P = I.prev;
+  const atras = '<button type="button" class="btn sec" data-accion="imp-paso" data-paso="3">Atrás</button>';
+  if (!P) {
+    return `<p class="cargando"><span class="spinner" aria-hidden="true"></span> Revisando filas y duplicados…</p>
+      ${msgImp(I.aviso)}<div class="acciones dcha">${atras}</div>`;
+  }
+  const muestra = P.res.validas.slice(0, 10);
+  const etiquetaBoton = P.nuevas.length ? `Importar ${P.nuevas.length} filas nuevas` : 'No hay filas nuevas';
+  return `
+  <div class="formulario">
+    <h2>4. Vista previa</h2>
+    <div class="kpis">
+      ${kpi('Nuevas', P.nuevas.length, 'se guardarán', 'check', 'ok')}
+      ${kpi('Duplicadas', P.dupBD + P.dupArchivo, 'ya existen o se repiten', 'doc')}
+      ${kpi('Rechazadas', P.res.rechazos.length, 'sin identificador', 'alerta', P.res.rechazos.length ? 'alerta' : '')}
+      ${kpi('Avisos', P.res.avisos.length, 'se guardan con un dato vacío', 'reloj')}
+    </div>
+    ${muestra.length
+      ? `<div class="tabla-wrap"><table class="tabla">
+          <thead><tr><th>Fila</th><th>Identificador</th><th>Corporación</th><th>Número</th><th>Fecha</th><th>Tendencia</th><th>Metadatos</th></tr></thead>
+          <tbody>${muestra.map((f) => `<tr>
+            <td class="num">${esc(f.fila)}</td><td>${esc(f.identificador_origen)}</td><td>${esc(f.corporacion || '—')}</td>
+            <td>${esc(f.numero || '—')}</td><td>${fmtFecha(f.fecha)}</td><td>${esc(tendTxt(f.tendencia))}</td>
+            <td class="num">${Object.keys(f.metadatos).length}</td></tr>`).join('')}</tbody>
+        </table></div>`
+      : '<p class="vacio">Ninguna fila es válida.</p>'}
+    <p class="nota-pie">Se muestran las primeras ${muestra.length} de ${P.res.validas.length} filas válidas.</p>
+    ${listaErrores(P.res.rechazos, 'Filas rechazadas', 'b-peligro')}
+    ${listaErrores(P.res.avisos, 'Avisos', 'b-alerta')}
+    ${msgImp(I.aviso)}
+    <div class="acciones dcha">
+      ${atras}
+      <button class="btn" type="button" data-accion="imp-confirmar" ${P.nuevas.length ? '' : 'disabled'}>${esc(etiquetaBoton)}</button>
+    </div>
+  </div>`;
+}
+
+function htmlImpProgreso() {
+  return `
+  <div class="formulario">
+    <h2>Importando lote</h2>
+    <p id="imp-estado" class="suave" aria-live="polite">Preparando…</p>
+    <div class="progreso" id="imp-progreso" role="progressbar" aria-label="Avance de la importación" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <span id="imp-barra" style="--p:0;transition:transform .35s cubic-bezier(.2,.7,.2,1)"></span>
+    </div>
+  </div>`;
+}
+
+function htmlImpResumen() {
+  const I = S.imp;
+  const R = I.res;
+  const cerrar = '<div class="acciones dcha"><button class="btn sec" type="button" data-accion="tab" data-tab="repositorio">Ver repositorio</button><button class="btn" type="button" data-accion="imp-nueva">Nueva importación</button></div>';
+  if (!R) return `${msgImp(I.error || 'No se obtuvo resultado.')}${cerrar}`;
+  const procesadas = R.total ? Math.min(1, (R.nuevas + R.duplicadas) / R.total) : 0;
+  return `
+  <div class="formulario">
+    <h2>Resumen de la importación</h2>
+    <p class="suave">Lote: <strong>${esc(R.lote)}</strong> · ${esc(R.total)} filas leídas</p>
+    ${I.error ? msgImp('La importación se interrumpió: ' + I.error) : ''}
+    <div class="kpis">
+      ${kpi('Nuevas', R.nuevas, 'guardadas en el repositorio', 'check', 'ok')}
+      ${kpi('Duplicadas', R.duplicadas, 'ya existían o se repetían', 'doc')}
+      ${kpi('Rechazadas', R.rechazos.length, 'sin identificador', 'alerta', R.rechazos.length ? 'alerta' : '')}
+      ${kpi('Fallidas', R.fallidas.length, 'no se pudieron guardar', 'alerta', R.fallidas.length ? 'alerta' : '')}
+    </div>
+    <div class="progreso" role="img" aria-label="Filas procesadas: ${esc(Math.round(procesadas * 100))} %"><span style="--p:${procesadas.toFixed(4)}"></span></div>
+    ${listaErrores(R.rechazos, 'Filas rechazadas', 'b-peligro')}
+    ${listaErrores(R.fallidas, 'Filas no guardadas', 'b-peligro')}
+    ${cerrar}
+  </div>`;
+}
+
+function vistaImportar() {
+  const I = S.imp;
+  const chips = PASOS_IMP.map(([n, t]) => `<span class="chip${n === I.paso ? ' ok' : ''}"${n === I.paso ? ' aria-current="step"' : ''}>${n}. ${esc(t)}</span>`).join('');
+  let cuerpo;
+  switch (I.paso) {
+    case 1: cuerpo = htmlImpPaso1(); break;
+    case 2: cuerpo = htmlImpPaso2(); break;
+    case 3: cuerpo = htmlImpPaso3(); break;
+    case 4: cuerpo = htmlImpPaso4(); break;
+    case 5: cuerpo = htmlImpProgreso(); break;
+    default: cuerpo = htmlImpResumen();
+  }
+  return `
+  <section class="panel">
+    <div class="cab-panel">
+      <div>
+        <h1>Importar</h1>
+        <p class="suave">Carga providencias desde CSV, TSV o una tabla copiada de Excel. Las filas que ya existen en la fuente se omiten.</p>
+      </div>
+      <div class="acciones"><button class="btn sec" data-accion="imp-plantilla">Descargar plantilla CSV</button></div>
+    </div>
+    ${I.paso <= 4 ? `<nav class="acciones" aria-label="Pasos de importación">${chips}</nav>` : ''}
+    <div class="bloque">${cuerpo}</div>
+    <section class="grupo">
+      <h2>Últimos 10 lotes</h2>
+      <div id="imp-historial"></div>
+    </section>
+  </section>`;
+}
+
+function renderImpHistorial() {
+  const el = $('#imp-historial');
+  if (!el) return;
+  if (!S.lotes) { el.innerHTML = '<p class="cargando"><span class="spinner" aria-hidden="true"></span> Cargando lotes…</p>'; return; }
+  if (!S.lotes.length) { el.innerHTML = '<p class="vacio">Todavía no hay lotes importados.</p>'; return; }
+  el.innerHTML = `<div class="tabla-wrap"><table class="tabla">
+    <thead><tr><th>Fecha</th><th>Archivo</th><th>Fuente</th><th>Tema</th><th>Filas</th><th>Nuevas</th><th>Duplicadas</th></tr></thead>
+    <tbody>${S.lotes.map((l) => {
+      const f = fuenteDe(l.fuente_id);
+      const t = tematicaDe(l.tematica_id);
+      return `<tr>
+        <td>${fmtFecha(l.creado)}</td><td>${esc(l.nombre_archivo || '—')}</td><td>${esc(f ? f.nombre : '—')}</td><td>${esc(t ? t.nombre : '—')}</td>
+        <td class="num">${esc(l.filas_total ?? '—')}</td><td class="num">${esc(l.filas_nuevas ?? '—')}</td><td class="num">${esc(l.filas_duplicadas ?? '—')}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>`;
+}
+
+// Actualiza la barra de progreso sin volver a pintar la vista.
+function progresoImp(pct, texto) {
+  const b = $('#imp-barra'), t = $('#imp-estado'), p = $('#imp-progreso');
+  if (b) b.style.setProperty('--p', String((pct / 100).toFixed(4)));
+  if (p) p.setAttribute('aria-valuenow', String(Math.round(pct)));
+  if (t) t.textContent = texto;
+}
+
+async function confirmarImportacion() {
+  const I = S.imp;
+  const P = I.prev;
+  if (I.paso !== 4 || !P) return;
+  if (!P.nuevas.length) { toast('No hay filas nuevas para importar.', true); return; }
+  const nombre = I.origen === 'archivo' ? I.archivo : 'importación pegada';
+  const total = I.tabla.registros.length;
+  let carrera = 0, lote = null, insertadas = 0;
+  const fallidas = [];
+  I.paso = 5; I.res = null; I.error = '';
+  renderTab();
+  try {
+    progresoImp(0, 'Creando el registro del lote…');
+    lote = await q(sb.from('jr_lotes').insert({
+      fuente_id: I.fuente, tematica_id: I.tema, nombre_archivo: nombre, formato: I.formato,
+      filas_total: total, filas_nuevas: 0, filas_duplicadas: 0, nota: 'Importación en curso'
+    }).select().single());
+    const uid = S.user.id;
+    const ahora = new Date().toISOString();
+    const items = [];
+    for (let i = 0; i < P.nuevas.length; i++) {
+      const f = P.nuevas[i];
+      items.push({ fila: f.fila, datos: {
+        fuente_id: I.fuente, tematica_id: I.tema,
+        identificador_origen: f.identificador_origen, corporacion: f.corporacion, jurisdiccion: f.jurisdiccion,
+        numero: f.numero, fecha: f.fecha, url_origen: f.url_origen, enlace: f.enlace,
+        problema_juridico: f.problema_juridico, hechos: f.hechos, ratio: f.ratio, obiter: f.obiter, decisum: f.decisum,
+        texto_fuente: f.texto_fuente, texto_hash: await hashSeguro(f.texto_fuente), tendencia: f.tendencia,
+        metadatos: f.metadatos, metodo_captura: 'lote', lote_id: lote.id, fecha_captura: ahora,
+        creado_por: uid, analisis_ia: false, estado_validacion: 'pendiente'
+      } });
+      if (i % 50 === 0) progresoImp((i / P.nuevas.length) * 30, 'Preparando filas…');
+    }
+    // Sin upsert: índice único parcial. Se inserta por tandas de 100; si una tanda falla, se reintenta fila a fila.
+    for (let i = 0; i < items.length; i += 100) {
+      const tanda = items.slice(i, i + 100);
+      const { error } = await sb.from('jr_providencias').insert(tanda.map((x) => x.datos));
+      if (!error) insertadas += tanda.length;
+      else {
+        for (const x of tanda) {
+          const r = await sb.from('jr_providencias').insert(x.datos);
+          if (!r.error) insertadas++;
+          else if (/duplicate key/i.test(r.error.message || '')) carrera++;
+          else fallidas.push({ fila: x.fila, motivo: msgError(r.error) });
+        }
+      }
+      progresoImp(30 + ((i + tanda.length) / items.length) * 70, `Guardando… ${Math.min(i + tanda.length, items.length)} de ${items.length}`);
+    }
+    const dup = P.dupBD + P.dupArchivo + carrera;
+    const rechazos = P.res.rechazos;
+    const nota = `Rechazadas por validación: ${rechazos.length}.` + (fallidas.length ? ` Fallidas al guardar: ${fallidas.length}.` : '');
+    await q(sb.from('jr_lotes').update({ filas_nuevas: insertadas, filas_duplicadas: dup, nota: nota }).eq('id', lote.id));
+    await q(sb.from('jr_capturas').insert({
+      fuente_id: I.fuente, tematica_id: I.tema, termino: nombre, metodo: 'lote',
+      conteo_resultados: total, lote_id: lote.id
+    }));
+    I.res = { lote: nombre, total: total, nuevas: insertadas, duplicadas: dup, rechazos: rechazos, fallidas: fallidas };
+    progresoImp(100, 'Importación terminada.');
+  } catch (e) {
+    I.error = msgError(e);
+    if (lote) {
+      try { await sb.from('jr_lotes').update({ filas_nuevas: insertadas, nota: 'Importación interrumpida: ' + I.error }).eq('id', lote.id); }
+      catch (x) { /* el lote queda con los datos parciales */ }
+    }
+    I.res = { lote: nombre, total: total, nuevas: insertadas, duplicadas: P.dupBD + P.dupArchivo + carrera, rechazos: P.res.rechazos, fallidas: fallidas };
+  }
+  I.paso = 6;
+  await Promise.all([cargarLotes(), cargarCapturas()]);
+  renderTab();
+  if (I.error) toast(I.error, true);
+  else toast(`Importación terminada: ${insertadas} filas nuevas.`);
+}
+
+function descargarPlantilla() {
+  const cab = ['identificador_origen', 'corporacion', 'jurisdiccion', 'numero', 'fecha', 'enlace', 'problema_juridico',
+    'hechos', 'ratio', 'obiter', 'decisum', 'texto_fuente', 'tendencia'];
+  const ejemplo = ['EJEMPLO-0001', 'Ejemplo (borrar antes de importar)', 'Civil', '00000-2024', '2024-05-30',
+    'https://ejemplo.gov.co/providencia/00000', 'Pregunta jurídica de ejemplo', 'Hechos de ejemplo.', 'Regla de ejemplo.',
+    '', 'Decisión de ejemplo.', 'Texto de ejemplo.', 'consolida'];
+  const contenido = '﻿' + [cab, ejemplo].map((f) => f.map(csvEscape).join(',')).join('\r\n') + '\r\n';
+  const url = URL.createObjectURL(new Blob([contenido], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'plantilla-providencias.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /* ================= 2. Repositorio ================= */
@@ -1095,8 +1806,9 @@ function abrirFormProv(p, opts) {
       ${inp('corporacion', 'Corporación')}
       ${inp('jurisdiccion', 'Jurisdicción')}
       ${inp('numero', 'Número de providencia')}
+      ${inp('identificador_origen', 'Identificador de origen')}
       ${inp('fecha', 'Fecha', 'date')}
-      <label class="ancho">Enlace<input type="url" name="enlace" value="${esc(v.enlace ?? '')}" placeholder="https://" ${ro}></label>
+      <label class="ancho">Enlace<input type="url" name="enlace" value="${esc(v.enlace ?? v.url_origen ?? '')}" placeholder="https://" ${ro}></label>
       <label>Tendencia<select name="tendencia" ${ro}>${opciones(TENDENCIAS, v.tendencia || 'sin_clasificar')}</select></label>
       ${inp('riesgo', 'Riesgo')}
     </div>
@@ -1123,6 +1835,10 @@ async function guardarProv(form) {
   for (const k of TEXTOS_PROV) cuerpo[k] = vacioANull(fd.get(k));
   cuerpo.tendencia = vacioANull(fd.get('tendencia')) || 'sin_clasificar';
   cuerpo.analisis_ia = fd.get('analisis_ia') === 'on';
+  // Campos de captura: se conservan al editar; el hash del texto se recalcula en cada guardado.
+  cuerpo.identificador_origen = vacioANull(fd.get('identificador_origen'));
+  cuerpo.url_origen = enlace;
+  cuerpo.texto_hash = await hashSeguro(cuerpo.texto_fuente);
   if (id) {
     await q(sb.from('jr_providencias').update(cuerpo).eq('id', id));
     toast('Providencia actualizada.');
@@ -1579,6 +2295,11 @@ document.addEventListener('click', async (e) => {
         abrirFormProv(null, { prefill: { fuente_id: id, tematica_id: el.dataset.tema || '' } });
         break;
       }
+      case 'registrar-busqueda': abrirRegistroBusqueda(id, el.dataset.tema || ''); break;
+      case 'imp-plantilla': descargarPlantilla(); break;
+      case 'imp-paso': S.imp.paso = Number(el.dataset.paso); S.imp.aviso = ''; if (S.imp.paso !== 4) S.imp.prev = null; renderTab(); break;
+      case 'imp-confirmar': await confirmarImportacion(); break;
+      case 'imp-nueva': { const ant = S.imp; S.imp = Object.assign(imp0(), { fuente: ant.fuente, tema: ant.tema }); renderTab(); break; }
       case 'nueva-prov': abrirFormProv(null); break;
       case 'ver-prov': {
         const p = S.providencias.find((x) => String(x.id) === String(id));
@@ -1611,9 +2332,13 @@ document.addEventListener('click', async (e) => {
 });
 
 document.addEventListener('input', onFiltro);
+document.addEventListener('input', (e) => {
+  if (e.target.dataset && e.target.dataset.imp === 'pegado') S.imp.pegado = e.target.value;
+});
 document.addEventListener('change', (e) => {
   onFiltro(e);
   const t = e.target;
+  if (t.dataset && t.dataset.imp === 'archivo') leerArchivo(t.files && t.files[0]);
   if (t.dataset && t.dataset.config) {
     guardarConfig(t.dataset.config, t.checked).catch((err) => {
       t.checked = !t.checked;
@@ -1649,6 +2374,18 @@ document.addEventListener('submit', async (e) => {
         escalonar($('#busq-resultados'));
         break;
       }
+      case 'form-imp-1': {
+        const fd = new FormData(f);
+        S.imp.fuente = String(fd.get('fuente_id') || '');
+        S.imp.tema = String(fd.get('tematica_id') || '');
+        S.imp.aviso = (S.imp.fuente && S.imp.tema) ? '' : 'Elige la fuente y la temática.';
+        if (!S.imp.aviso) S.imp.paso = 2;
+        renderTab();
+        break;
+      }
+      case 'form-imp-2': importarTexto(); break;
+      case 'form-imp-3': mapearColumnas(f); break;
+      case 'form-captura': await guardarCaptura(f); break;
       case 'form-prov': await guardarProv(f); break;
       case 'form-ficha': await guardarFicha(f); break;
       case 'form-nueva-linea': await crearLinea(f); break;
