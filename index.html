@@ -1,0 +1,1240 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Indicador de líneas jurisprudenciales</title>
+<style>
+:root{
+  --fondo:#f5f6f8; --superficie:#ffffff; --superficie-2:#eef1f5; --texto:#1b2230; --texto-suave:#5d6676;
+  --borde:#d9dee6; --acento:#1f4e79; --acento-txt:#ffffff; --acento-suave:#e5edf6;
+  --ok:#1d6b45; --ok-suave:#e3f3ea; --alerta:#8a5300; --alerta-suave:#fcf1de;
+  --peligro:#a32a1f; --peligro-suave:#fbe9e7; --sombra:0 1px 2px rgba(20,30,50,.06); --radio:10px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --fondo:#121419; --superficie:#1b1e25; --superficie-2:#23272f; --texto:#e7eaf0; --texto-suave:#9aa3b2;
+    --borde:#2e333d; --acento:#7fb0e0; --acento-txt:#0f1720; --acento-suave:#1d2b3d;
+    --ok:#6fcf97; --ok-suave:#173025; --alerta:#f2c46d; --alerta-suave:#3a2d12;
+    --peligro:#f08b80; --peligro-suave:#3d1f1c; --sombra:none;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --fondo:#121419; --superficie:#1b1e25; --superficie-2:#23272f; --texto:#e7eaf0; --texto-suave:#9aa3b2;
+  --borde:#2e333d; --acento:#7fb0e0; --acento-txt:#0f1720; --acento-suave:#1d2b3d;
+  --ok:#6fcf97; --ok-suave:#173025; --alerta:#f2c46d; --alerta-suave:#3a2d12;
+  --peligro:#f08b80; --peligro-suave:#3d1f1c; --sombra:none;
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+body{margin:0;background:var(--fondo);color:var(--texto);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+h1{font-size:1.4rem;margin:0}
+h2{font-size:1.05rem;margin:14px 0 6px}
+p{margin:0}
+button{font:inherit}
+
+/* Cabecera y pestañas */
+.cab{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;background:var(--superficie);border-bottom:1px solid var(--borde)}
+.marca{font-weight:700}
+.usuario{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tabs{display:flex;gap:4px;overflow-x:auto;padding:0 16px;background:var(--superficie);border-bottom:1px solid var(--borde)}
+.tabs button{background:none;border:0;padding:12px 10px;color:var(--texto-suave);border-bottom:2px solid transparent;white-space:nowrap;cursor:pointer;font:inherit}
+.tabs button.activa{color:var(--acento);border-bottom-color:var(--acento);font-weight:600}
+.contenido{max-width:1100px;margin:0 auto;padding:16px}
+.panel{display:flex;flex-direction:column;gap:14px}
+.cab-panel{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.grupo{display:flex;flex-direction:column;gap:10px}
+.grupo h2{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0}
+
+/* Elementos */
+.btn{background:var(--acento);color:var(--acento-txt);border:1px solid var(--acento);border-radius:8px;padding:8px 14px;font-weight:600;cursor:pointer;min-height:38px}
+.btn:disabled{opacity:.6;cursor:default}
+.btn.sec{background:var(--superficie);color:var(--acento)}
+.btn.pequeno{padding:4px 10px;min-height:30px;font-size:.85rem;font-weight:500}
+.btn.ancho-100{width:100%}
+.btn-ghost{background:none;border:0;color:var(--texto-suave);font-size:1.5rem;cursor:pointer;line-height:1;padding:0 4px}
+.peligro-txt{color:var(--peligro) !important}
+.chip{display:inline-block;font-size:.78rem;padding:2px 8px;border-radius:999px;background:var(--superficie-2);color:var(--texto-suave);border:1px solid var(--borde)}
+.chip.ok{color:var(--ok);background:var(--ok-suave);border-color:transparent}
+.badge{display:inline-block;font-size:.8rem;font-weight:600;padding:2px 9px;border-radius:999px;background:var(--superficie-2);color:var(--texto-suave);white-space:nowrap}
+.b-ok{background:var(--ok-suave);color:var(--ok)}
+.b-alerta{background:var(--alerta-suave);color:var(--alerta)}
+.b-peligro{background:var(--peligro-suave);color:var(--peligro)}
+.aviso{background:var(--acento-suave);border-radius:8px;padding:10px 12px;font-size:.92rem}
+.aviso-pend{display:inline-block;margin-top:4px;color:var(--alerta);font-size:.85rem;font-weight:600}
+.msg{font-size:.9rem;min-height:1.3em;color:var(--peligro)}
+.msg.ok{color:var(--ok)}
+.suave{color:var(--texto-suave);font-size:.88rem}
+.conteo{color:var(--texto-suave);font-size:.9rem}
+.vacio{color:var(--texto-suave);text-align:center;padding:24px}
+.cargando{text-align:center;padding:48px;color:var(--texto-suave)}
+.nota-fija{font-size:.88rem;color:var(--texto-suave);border-left:3px solid var(--borde);padding-left:10px}
+.dcha{justify-content:flex-end}
+.acciones{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.acc{white-space:nowrap}
+
+/* Formularios */
+.formulario{display:flex;flex-direction:column;gap:12px}
+label{display:flex;flex-direction:column;gap:4px;font-size:.9rem;color:var(--texto-suave)}
+label.check{flex-direction:row;align-items:center;gap:8px;color:var(--texto)}
+label.check input{width:auto;min-height:0}
+input,select,textarea{font:inherit;color:var(--texto);background:var(--superficie);border:1px solid var(--borde);border-radius:8px;padding:8px 10px;min-height:38px;width:100%}
+textarea{min-height:80px;resize:vertical}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--acento);outline-offset:1px}
+input[type="checkbox"]{accent-color:var(--acento)}
+fieldset{border:1px solid var(--borde);border-radius:8px;padding:10px 12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:6px 14px;margin:0}
+legend{padding:0 6px;color:var(--texto-suave);font-size:.9rem}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid2 .ancho,.ancho{grid-column:1/-1}
+.filtros{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;align-items:end}
+.filtros .ancho{grid-column:1/-1}
+.bloque{background:var(--superficie);border:1px solid var(--borde);border-radius:var(--radio);padding:14px;display:flex;flex-direction:column;gap:10px;box-shadow:var(--sombra)}
+.bloque h2{margin:0}
+.grid-cuenta{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* Tablas */
+.tabla-wrap{overflow-x:auto;border:1px solid var(--borde);border-radius:var(--radio);background:var(--superficie)}
+.tabla{width:100%;border-collapse:collapse;min-width:620px}
+.tabla th,.tabla td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--borde);vertical-align:top;font-size:.92rem}
+.tabla th{font-size:.8rem;text-transform:uppercase;letter-spacing:.03em;color:var(--texto-suave);background:var(--superficie-2)}
+.tabla tr:last-child td{border-bottom:0}
+
+/* Tarjetas */
+.tarjetas{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.tarjeta{background:var(--superficie);border:1px solid var(--borde);border-radius:var(--radio);padding:14px;display:flex;flex-direction:column;gap:8px;box-shadow:var(--sombra)}
+.tarjeta h3{margin:0;font-size:1rem}
+.cab-tarjeta{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap}
+.etiqueta{font-size:.76rem;text-transform:uppercase;letter-spacing:.04em;color:var(--texto-suave)}
+.frase{background:var(--superficie-2);border-radius:8px;padding:8px 10px;font-size:.92rem;overflow-wrap:anywhere}
+.nota{color:var(--texto-suave);font-size:.9rem}
+.kpi{display:flex;flex-direction:column;gap:6px;background:var(--superficie);border:1px solid var(--borde);border-radius:var(--radio);padding:18px}
+.kpi-num{font-size:2.4rem;font-weight:700;color:var(--acento);line-height:1.1}
+.aviso-kpi{background:var(--alerta-suave);color:var(--alerta);font-weight:600;border:0}
+.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--superficie-2);border-radius:8px;padding:4px;gap:4px}
+.seg button{background:none;border:0;padding:8px;border-radius:6px;color:var(--texto-suave);cursor:pointer}
+.seg button.activa{background:var(--superficie);color:var(--texto);font-weight:600;box-shadow:var(--sombra)}
+
+/* Autenticación */
+.auth{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
+.auth-caja{width:100%;max-width:400px;background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:24px;display:flex;flex-direction:column;gap:14px;box-shadow:var(--sombra)}
+.auth-caja h1{font-size:1.25rem}
+
+/* Modal y avisos */
+.modal{position:fixed;inset:0;background:rgba(10,15,25,.45);display:flex;align-items:flex-start;justify-content:center;padding:24px 12px;overflow:auto;z-index:50}
+.modal-caja{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;width:100%;max-width:760px;padding:18px;color:var(--texto)}
+.modal-cab{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+.modal-cab h2{margin:0}
+.toast{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:var(--texto);color:var(--fondo);padding:10px 16px;border-radius:8px;z-index:60;max-width:calc(100% - 32px);font-size:.92rem;box-shadow:0 4px 14px rgba(0,0,0,.2)}
+.toast.error{background:#a32a1f;color:#ffffff}
+.noscript{padding:24px;text-align:center}
+
+@media (max-width:640px){
+  .contenido{padding:16px}
+  .cab{padding:12px 16px}
+  .grid2,.grid-cuenta{grid-template-columns:1fr}
+  .tabla{min-width:560px}
+  .modal{padding:12px 8px}
+  .modal-caja{padding:14px}
+}
+</style>
+</head>
+<body>
+<div id="app"><p class="cargando">Cargando…</p></div>
+
+<div id="modal" class="modal" hidden>
+  <div class="modal-caja" role="dialog" aria-modal="true" aria-labelledby="modal-titulo">
+    <div class="modal-cab">
+      <h2 id="modal-titulo"></h2>
+      <button class="btn-ghost" data-accion="cerrar-modal" aria-label="Cerrar">×</button>
+    </div>
+    <div id="modal-cuerpo"></div>
+  </div>
+</div>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+(function () {
+'use strict';
+
+/* ================= Configuración ================= */
+const SUPA_URL = 'https://kzenkrmfyyvozzmdebkz.supabase.co';
+const SUPA_KEY = 'sb_publishable_p3UzLDI8PObsU8BCQ_wR_w_JirIbSoT';
+const sb = window.supabase ? window.supabase.createClient(SUPA_URL, SUPA_KEY) : null;
+
+const TABS = [
+  ['buscador', 'Buscador'], ['repositorio', 'Repositorio'], ['analisis', 'Análisis asistido'],
+  ['lineas', 'Líneas'], ['indicador', 'Indicador'], ['cuenta', 'Mi cuenta']
+];
+const ROLES = [['investigador', 'Investigador'], ['validador', 'Validador'], ['admin', 'Administrador']];
+const AREAS = ['Salud', 'ARL', 'Seguros'];
+const TENDENCIAS = [['consolida', 'Consolida'], ['modifica', 'Modifica'], ['tension', 'Tensión'], ['sin_clasificar', 'Sin clasificar']];
+const ESTADOS_LINEA = ['borrador', 'en_validacion', 'aprobada', 'vigente', 'vencida'];
+const ESTADOS_LINEA_TXT = { borrador: 'Borrador', en_validacion: 'En validación', aprobada: 'Aprobada', vigente: 'Vigente', vencida: 'Vencida' };
+const CLS_LINEA = { borrador: '', en_validacion: 'b-alerta', aprobada: 'b-ok', vigente: 'b-ok', vencida: 'b-peligro' };
+const ESTADO_VAL_TXT = { pendiente: 'Pendiente', validada: 'Validada', rechazada: 'Rechazada' };
+const CLS_VAL = { pendiente: 'b-alerta', validada: 'b-ok', rechazada: 'b-peligro' };
+const CRITERIOS = [
+  ['problema_juridico_patron_factico', 'Problema jurídico y patrón fáctico'],
+  ['alcance_jurisdiccion_periodo_corte', 'Alcance, jurisdicción, periodo y corte'],
+  ['fuentes_verificadas', 'Fuentes verificadas'],
+  ['inventario_depurado', 'Inventario depurado'],
+  ['analisis_hechos_ratio_obiter_decisum', 'Análisis de hechos, ratio, obiter y decisum'],
+  ['reglas_excepciones_tensiones_cambios', 'Reglas, excepciones, tensiones y cambios'],
+  ['impacto_sura', 'Impacto SURA'],
+  ['recomendacion', 'Recomendación'],
+  ['validacion_juridica', 'Validación jurídica'],
+  ['control_version', 'Control de versión'],
+  ['responsable', 'Responsable'],
+  ['proxima_revision', 'Próxima revisión']
+];
+const TEXTOS_PROV = ['corporacion', 'jurisdiccion', 'numero', 'fecha', 'enlace', 'problema_juridico', 'hechos', 'ratio',
+  'obiter', 'decisum', 'riesgo', 'recomendacion', 'texto_fuente'];
+
+/* ================= Estado ================= */
+const S = {
+  user: null, perfil: null,
+  fuentes: [], tematicas: [], lineas: [], providencias: [], perfiles: [], config: null,
+  provCargadas: false,
+  authModo: 'ingresar',
+  busqueda: '', buscado: false,
+  filtros: { repo: { tema: '', fuente: '', estado: '', texto: '' }, lineas: { tema: '' } },
+  tab: 'buscador'
+};
+let sesionId = null;
+
+/* ================= Utilidades ================= */
+const $ = (s) => document.querySelector(s);
+
+function esc(v) {
+  if (v === null || v === undefined) return '';
+  return String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function norm(s) {
+  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+}
+function vacioANull(v) {
+  const t = (v === null || v === undefined) ? '' : String(v).trim();
+  return t === '' ? null : t;
+}
+function hoyISO() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function fmtFecha(f) {
+  if (!f) return '—';
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(f) ? new Date(f + 'T00:00:00') : new Date(f);
+  return isNaN(d) ? esc(f) : d.toLocaleDateString('es', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+function urlSegura(u) {
+  try { const x = new URL(u); return (x.protocol === 'http:' || x.protocol === 'https:') ? x.href : null; }
+  catch (e) { return null; }
+}
+function opciones(lista, val, vacio) {
+  let h = vacio !== undefined ? '<option value="" ' + (!val ? 'selected' : '') + '>' + esc(vacio) + '</option>' : '';
+  for (const [v, t] of lista) {
+    h += '<option value="' + esc(v) + '" ' + (String(v) === String(val ?? '') && val !== '' && val !== null && val !== undefined ? 'selected' : '') + '>' + esc(t) + '</option>';
+  }
+  return h;
+}
+const esValidador = () => ['validador', 'admin'].includes(S.perfil && S.perfil.rol);
+const esAdmin = () => !!S.perfil && S.perfil.rol === 'admin';
+const rolTxt = (r) => (ROLES.find((x) => x[0] === r) || [null, r || '—'])[1];
+const tendTxt = (t) => (TENDENCIAS.find((x) => x[0] === t) || [null, t || '—'])[1];
+const nombreDe = (id) => { const p = S.perfiles.find((x) => String(x.id) === String(id)); return p ? p.nombre : '—'; };
+const tematicaDe = (id) => S.tematicas.find((t) => String(t.id) === String(id));
+const fuenteDe = (id) => S.fuentes.find((f) => String(f.id) === String(id));
+const badgeVal = (e) => '<span class="badge ' + (CLS_VAL[e] || '') + '">' + esc(ESTADO_VAL_TXT[e] || e || '—') + '</span>';
+const badgeLinea = (e) => '<span class="badge ' + (CLS_LINEA[e] || '') + '">' + esc(ESTADOS_LINEA_TXT[e] || e || '—') + '</span>';
+const criteriosOk = (l) => CRITERIOS.filter(([k]) => l.criterios && l.criterios[k] === true).length;
+function cumpleLinea(l, hoy) {
+  const todos = CRITERIOS.every(([k]) => l.criterios && l.criterios[k] === true);
+  const estadoOk = l.estado === 'aprobada' || l.estado === 'vigente';
+  const noVencida = !!l.proxima_revision && String(l.proxima_revision) >= hoy;
+  return todos && estadoOk && noVencida;
+}
+
+function msgError(err) {
+  const m = (err && (err.message || err.msg || err.error_description)) || '';
+  const mapa = [
+    [/Invalid login credentials/i, 'Correo o contraseña incorrectos.'],
+    [/Email not confirmed/i, 'Debes confirmar tu correo antes de ingresar.'],
+    [/already registered|already been registered/i, 'Ya existe una cuenta con ese correo.'],
+    [/at least 6 characters|Password should be/i, 'La contraseña debe tener al menos 6 caracteres.'],
+    [/row-level security|permission denied|violates row-level/i, 'No tienes permiso para realizar esta acción.'],
+    [/duplicate key/i, 'Ya existe un registro con esos datos.'],
+    [/invalid email/i, 'El correo no es válido.'],
+    [/rate limit|too many/i, 'Demasiados intentos. Espera un momento e inténtalo de nuevo.'],
+    [/Failed to fetch|NetworkError|network/i, 'No hay conexión con el servidor. Revisa tu internet e inténtalo de nuevo.']
+  ];
+  for (const [re, txt] of mapa) if (re.test(m)) return txt;
+  return 'Ocurrió un error' + (m ? ': ' + m : '. Inténtalo de nuevo.');
+}
+
+let toastT = null;
+function toast(msg, error) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.className = 'toast' + (error ? ' error' : '');
+  t.hidden = false;
+  clearTimeout(toastT);
+  toastT = setTimeout(() => { t.hidden = true; }, 4200);
+}
+
+// Ejecuta una consulta de Supabase y lanza el error si lo hay.
+async function q(promesa) {
+  const { data, error } = await promesa;
+  if (error) throw error;
+  return data;
+}
+// Lectura tolerante: si falla, devuelve el valor de respaldo y (opcionalmente) avisa.
+async function leer(builder, fallback, avisar) {
+  try {
+    const { data, error } = await builder;
+    if (error) throw error;
+    return data ?? fallback;
+  } catch (e) {
+    if (avisar !== false) toast(msgError(e), true);
+    return fallback;
+  }
+}
+
+async function copiarTexto(t) {
+  try { await navigator.clipboard.writeText(t); return true; }
+  catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (err) { ok = false; }
+    ta.remove();
+    return ok;
+  }
+}
+
+function abrirModal(titulo, html) {
+  $('#modal-titulo').textContent = titulo;
+  $('#modal-cuerpo').innerHTML = html;
+  $('#modal').hidden = false;
+  const primero = $('#modal-cuerpo').querySelector('input:not([type=hidden]):not([disabled]),select:not([disabled]),textarea:not([disabled])');
+  if (primero) primero.focus();
+}
+function cerrarModal() {
+  $('#modal').hidden = true;
+  $('#modal-cuerpo').innerHTML = '';
+}
+
+/* ================= Carga de datos ================= */
+async function cargarPerfilPropio() {
+  let p = await leer(sb.from('jr_perfiles').select('*').eq('id', S.user.id).maybeSingle(), null);
+  if (!p) {
+    const nombre = (S.user.user_metadata && S.user.user_metadata.nombre) || (S.user.email || '').split('@')[0];
+    p = await leer(sb.from('jr_perfiles').insert({ id: S.user.id, nombre: nombre, correo: S.user.email, rol: 'investigador' }).select().single(), null);
+  }
+  S.perfil = p || { id: S.user.id, nombre: S.user.email, correo: S.user.email, rol: 'investigador' };
+}
+
+async function cargarDatosBase() {
+  const [fuentes, tematicas, lineas, config, perfiles] = await Promise.all([
+    leer(sb.from('jr_fuentes').select('*').order('nombre'), S.fuentes),
+    leer(sb.from('jr_tematicas').select('*').order('nombre'), S.tematicas),
+    leer(sb.from('jr_lineas').select('*').order('titulo'), S.lineas),
+    leer(sb.from('jr_config').select('*').eq('id', 1).maybeSingle(), S.config),
+    leer(sb.from('jr_perfiles').select('*').order('nombre'), S.perfiles, false)
+  ]);
+  S.fuentes = fuentes || []; S.tematicas = tematicas || []; S.lineas = lineas || [];
+  S.config = config; S.perfiles = perfiles || [];
+}
+
+async function cargarProvidencias() {
+  S.providencias = await leer(sb.from('jr_providencias').select('*').order('fecha', { ascending: false, nullsFirst: false }), []) || [];
+  S.provCargadas = true;
+}
+
+/* ================= Sesión y autenticación ================= */
+sb && sb.auth.onAuthStateChange((evento, session) => {
+  // Diferido para no llamar a Supabase dentro del callback de autenticación.
+  setTimeout(() => manejarSesion(session), 0);
+});
+
+async function manejarSesion(session) {
+  const user = (session && session.user) || null;
+  const id = user ? user.id : null;
+  if (id === sesionId) return;
+  sesionId = id;
+  S.user = user; S.perfil = null; S.provCargadas = false; S.providencias = [];
+  S.busqueda = ''; S.buscado = false; S.tab = 'buscador';
+  if (!user) { renderAuth(); return; }
+  renderCargando();
+  await cargarPerfilPropio();
+  await cargarDatosBase();
+  renderShell();
+}
+
+function renderCargando() { $('#app').innerHTML = '<p class="cargando">Cargando…</p>'; }
+
+function renderAuth() {
+  const reg = S.authModo === 'registro';
+  $('#app').innerHTML = `
+  <main class="auth">
+    <div class="auth-caja">
+      <h1>Indicador de líneas jurisprudenciales</h1>
+      <p class="suave">Acceso para el equipo de investigación.</p>
+      <div class="seg" role="tablist">
+        <button role="tab" class="${!reg ? 'activa' : ''}" aria-selected="${!reg}" data-accion="auth-modo" data-modo="ingresar">Ingresar</button>
+        <button role="tab" class="${reg ? 'activa' : ''}" aria-selected="${reg}" data-accion="auth-modo" data-modo="registro">Crear cuenta</button>
+      </div>
+      <form id="form-auth" class="formulario">
+        ${reg ? '<label>Nombre<input name="nombre" autocomplete="name" required maxlength="120"></label>' : ''}
+        <label>Correo<input type="email" name="correo" autocomplete="email" required></label>
+        <label>Contraseña<input type="password" name="pass" minlength="6" autocomplete="${reg ? 'new-password' : 'current-password'}" required></label>
+        <p id="auth-msg" class="msg" role="alert"></p>
+        <button class="btn ancho-100" type="submit" id="auth-btn">${reg ? 'Crear cuenta' : 'Ingresar'}</button>
+      </form>
+    </div>
+  </main>`;
+}
+
+async function enviarAuth(form) {
+  const fd = new FormData(form);
+  const correo = String(fd.get('correo') || '').trim();
+  const pass = String(fd.get('pass') || '');
+  const btn = $('#auth-btn');
+  const msg = $('#auth-msg');
+  msg.textContent = ''; msg.className = 'msg';
+  btn.disabled = true;
+  try {
+    if (S.authModo === 'registro') {
+      const nombre = String(fd.get('nombre') || '').trim();
+      const { data, error } = await sb.auth.signUp({ email: correo, password: pass, options: { data: { nombre: nombre } } });
+      if (error) throw error;
+      if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        throw new Error('User already registered');
+      }
+      if (!data.session) {
+        msg.textContent = 'Cuenta creada. Revisa tu correo para confirmarla y luego ingresa.';
+        msg.className = 'msg ok';
+      }
+    } else {
+      const { error } = await sb.auth.signInWithPassword({ email: correo, password: pass });
+      if (error) throw error;
+    }
+  } catch (e) {
+    msg.textContent = msgError(e);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function cerrarSesion() {
+  const { error } = await sb.auth.signOut();
+  if (error) toast(msgError(error), true);
+}
+
+/* ================= Estructura principal ================= */
+function renderShell() {
+  const p = S.perfil || {};
+  $('#app').innerHTML = `
+  <header class="cab">
+    <div class="marca">Indicador de líneas jurisprudenciales</div>
+    <div class="usuario">
+      <span>${esc(p.nombre || '')}</span>
+      <span class="chip">${esc(rolTxt(p.rol))}</span>
+      <button class="btn sec pequeno" data-accion="salir">Cerrar sesión</button>
+    </div>
+  </header>
+  <nav class="tabs" role="tablist" aria-label="Secciones">
+    ${TABS.map(([k, t]) => `<button role="tab" data-accion="tab" data-tab="${k}" aria-selected="false">${esc(t)}</button>`).join('')}
+  </nav>
+  <main id="main" class="contenido"></main>`;
+  renderTab();
+}
+
+// Cambia de pestaña, cargando lo necesario antes de pintar.
+async function irA(tab) {
+  S.tab = tab;
+  if (tab === 'repositorio' && !S.provCargadas) {
+    $('#main').innerHTML = '<p class="cargando">Cargando providencias…</p>';
+    await cargarProvidencias();
+  }
+  renderTab();
+}
+
+function renderTab() {
+  document.querySelectorAll('.tabs [data-tab]').forEach((b) => {
+    const on = b.dataset.tab === S.tab;
+    b.classList.toggle('activa', on);
+    b.setAttribute('aria-selected', String(on));
+  });
+  const m = $('#main');
+  if (!m) return;
+  const vistas = {
+    buscador: vistaBuscador, repositorio: vistaRepo, analisis: vistaAnalisis,
+    lineas: vistaLineas, indicador: vistaIndicador, cuenta: vistaCuenta
+  };
+  m.innerHTML = vistas[S.tab]();
+  if (S.tab === 'buscador') renderBusqueda();
+  if (S.tab === 'repositorio') renderRepoLista();
+  if (S.tab === 'lineas') renderLineas();
+}
+
+/* ================= 1. Buscador ================= */
+function temaSugerido(texto) {
+  const n = norm(texto);
+  if (!n) return null;
+  return S.tematicas.find((t) => {
+    const tn = norm(t.nombre);
+    return tn && (n.includes(tn) || tn.includes(n));
+  }) || null;
+}
+
+function vistaBuscador() {
+  return `
+  <section class="panel">
+    <h1>Buscador de fuentes</h1>
+    <p class="aviso">Las fuentes oficiales no tienen API abierta, así que el registro es asistido: busca aquí, abre la fuente y pega la frase en su buscador. Si encuentras una providencia pertinente, pulsa <strong>Registrar hallazgo</strong> para abrir el formulario con la fuente y el tema ya preseleccionados.</p>
+    <form id="form-busqueda" class="acciones">
+      <label style="flex:1 1 260px">Tema o frase
+        <input name="q" value="${esc(S.busqueda)}" placeholder="Ej.: riesgos laborales, culpa patronal…" autocomplete="off">
+      </label>
+      <button class="btn" type="submit">Buscar</button>
+    </form>
+    <div id="busq-resultados"></div>
+  </section>`;
+}
+
+function renderBusqueda() {
+  const el = $('#busq-resultados');
+  if (!el) return;
+  if (!S.buscado) {
+    el.innerHTML = '<p class="vacio">Escribe un tema o frase y pulsa Buscar para ver las fuentes activas.</p>';
+    return;
+  }
+  const activas = S.fuentes.filter((f) => f.activa === true);
+  const tema = temaSugerido(S.busqueda);
+  el.innerHTML = `
+    <p class="conteo">Búsqueda: «${esc(S.busqueda)}»${tema ? ' · Tema sugerido: <strong>' + esc(tema.nombre) + '</strong>' : ''}</p>
+    ${activas.length
+      ? '<div class="tarjetas">' + activas.map((f) => tarjetaFuente(f, tema)).join('') + '</div>'
+      : '<p class="vacio">No hay fuentes activas registradas.</p>'}`;
+}
+
+function tarjetaFuente(f, tema) {
+  const id = esc(f.id);
+  return `
+  <article class="tarjeta">
+    <div class="cab-tarjeta">
+      <h3>${esc(f.nombre)}</h3>
+      ${f.conteo_esperado !== null && f.conteo_esperado !== undefined ? '<span class="chip">Conteo esperado: ' + esc(f.conteo_esperado) + '</span>' : ''}
+    </div>
+    <p class="etiqueta">Frase de prueba</p>
+    <p class="frase">${esc(f.frase_prueba || 'Sin frase de prueba registrada.')}</p>
+    ${f.nota ? '<p class="nota">' + esc(f.nota) + '</p>' : ''}
+    <div class="acciones">
+      <button class="btn sec" data-accion="abrir-fuente" data-id="${id}">Abrir fuente</button>
+      <button class="btn sec" data-accion="copiar-frase" data-id="${id}">Copiar frase</button>
+      <button class="btn" data-accion="registrar" data-id="${id}" data-tema="${esc(tema ? tema.id : '')}">Registrar hallazgo</button>
+    </div>
+  </article>`;
+}
+
+/* ================= 2. Repositorio ================= */
+function vistaRepo() {
+  const f = S.filtros.repo;
+  return `
+  <section class="panel">
+    <div class="cab-panel">
+      <h1>Repositorio de providencias</h1>
+      <button class="btn" data-accion="nueva-prov">Nueva providencia</button>
+    </div>
+    <div class="filtros">
+      <label>Tema<select data-filtro="repo:tema">${opciones(S.tematicas.map((t) => [t.id, t.nombre]), f.tema, 'Todos')}</select></label>
+      <label>Fuente<select data-filtro="repo:fuente">${opciones(S.fuentes.map((x) => [x.id, x.nombre]), f.fuente, 'Todas')}</select></label>
+      <label>Validación<select data-filtro="repo:estado">${opciones([['pendiente', 'Pendiente'], ['validada', 'Validada'], ['rechazada', 'Rechazada']], f.estado, 'Todas')}</select></label>
+      <label class="ancho">Texto<input type="search" data-filtro="repo:texto" value="${esc(f.texto)}" placeholder="Corporación, número, hechos, ratio…"></label>
+    </div>
+    <div id="repo-lista"></div>
+  </section>`;
+}
+
+function providenciasFiltradas() {
+  const f = S.filtros.repo;
+  const txt = norm(f.texto);
+  return S.providencias.filter((p) =>
+    (!f.tema || String(p.tematica_id) === f.tema) &&
+    (!f.fuente || String(p.fuente_id) === f.fuente) &&
+    (!f.estado || p.estado_validacion === f.estado) &&
+    (!txt || norm([p.corporacion, p.numero, p.jurisdiccion, p.problema_juridico, p.hechos, p.ratio, p.obiter, p.decisum, p.recomendacion].join(' ')).includes(txt))
+  );
+}
+
+function renderRepoLista() {
+  const el = $('#repo-lista');
+  if (!el) return;
+  const lista = providenciasFiltradas();
+  if (!lista.length) {
+    el.innerHTML = '<p class="vacio">No hay providencias que coincidan con los filtros.</p>';
+    return;
+  }
+  el.innerHTML = `
+    <p class="conteo">${lista.length} de ${S.providencias.length} providencias</p>
+    <div class="tabla-wrap">
+      <table class="tabla">
+        <thead><tr><th>Providencia</th><th>Tema</th><th>Fuente</th><th>Tendencia</th><th>Validación</th><th></th></tr></thead>
+        <tbody>${lista.map(filaProv).join('')}</tbody>
+      </table>
+    </div>`;
+}
+
+function filaProv(p) {
+  const t = tematicaDe(p.tematica_id);
+  const f = fuenteDe(p.fuente_id);
+  const id = esc(p.id);
+  const puedeEditar = esValidador() || String(p.creado_por) === String(S.user.id);
+  let acc = `<button class="btn sec pequeno" data-accion="ver-prov" data-id="${id}">${puedeEditar ? 'Editar' : 'Ver'}</button>`;
+  if (esValidador()) {
+    if (p.estado_validacion !== 'validada') acc += ` <button class="btn sec pequeno" data-accion="validar" data-id="${id}" data-estado="validada">Marcar como validada</button>`;
+    if (p.estado_validacion !== 'rechazada') acc += ` <button class="btn sec pequeno peligro-txt" data-accion="validar" data-id="${id}" data-estado="rechazada">Marcar como rechazada</button>`;
+  }
+  const pendiente = p.estado_validacion === 'pendiente';
+  return `
+  <tr>
+    <td>
+      <strong>${esc(p.corporacion || 'Sin corporación')}</strong>${p.numero ? ' · ' + esc(p.numero) : ''}<br>
+      <span class="suave">${esc(p.jurisdiccion || '')}${p.fecha ? ' · ' + fmtFecha(p.fecha) : ''}</span>
+      ${p.analisis_ia ? '<br><span class="chip">Generado con apoyo de IA</span>' : ''}
+    </td>
+    <td>${esc(t ? t.nombre : '—')}</td>
+    <td>${esc(f ? f.nombre : '—')}</td>
+    <td>${esc(tendTxt(p.tendencia))}</td>
+    <td>
+      ${badgeVal(p.estado_validacion)}
+      ${pendiente ? '<div class="aviso-pend">Pendiente de validación humana</div>' : ''}
+      ${p.validada_por ? '<div class="suave">por ' + esc(nombreDe(p.validada_por)) + '</div>' : ''}
+    </td>
+    <td class="acc">${acc}</td>
+  </tr>`;
+}
+
+function abrirFormProv(p, opts) {
+  opts = opts || {};
+  const editable = !p || String(p.creado_por) === String(S.user.id) || esValidador();
+  const modo = !p ? 'nueva' : (editable ? 'editar' : 'ver');
+  const v = Object.assign({}, p || {}, opts.prefill || {});
+  const ro = modo === 'ver' ? 'disabled' : '';
+  const est = p ? p.estado_validacion : 'pendiente';
+  const titulo = modo === 'nueva' ? 'Nueva providencia' : (modo === 'editar' ? 'Editar providencia' : 'Ver providencia');
+  const inp = (n, l, tipo) => `<label>${esc(l)}<input type="${tipo || 'text'}" name="${n}" value="${esc(v[n] ?? '')}" ${ro}></label>`;
+  const txa = (n, l) => `<label class="ancho">${esc(l)}<textarea name="${n}" rows="3" ${ro}>${esc(v[n] ?? '')}</textarea></label>`;
+  const botones = modo === 'ver'
+    ? '<button type="button" class="btn sec" data-accion="cerrar-modal">Cerrar</button>'
+    : '<button type="button" class="btn sec" data-accion="cerrar-modal">Cancelar</button><button class="btn" type="submit">Guardar</button>';
+  abrirModal(titulo, `
+  <form id="form-prov" class="formulario">
+    <input type="hidden" name="id" value="${esc(p ? p.id : '')}">
+    <p>${badgeVal(est)} ${est === 'pendiente' ? '<span class="aviso-pend">Pendiente de validación humana</span>' : ''}</p>
+    <div class="grid2">
+      <label>Tema *<select name="tematica_id" required ${ro}>${opciones(S.tematicas.map((t) => [t.id, t.nombre]), v.tematica_id, 'Selecciona…')}</select></label>
+      <label>Fuente<select name="fuente_id" ${ro}>${opciones(S.fuentes.map((f) => [f.id, f.nombre]), v.fuente_id, 'Sin fuente')}</select></label>
+      ${inp('corporacion', 'Corporación')}
+      ${inp('jurisdiccion', 'Jurisdicción')}
+      ${inp('numero', 'Número de providencia')}
+      ${inp('fecha', 'Fecha', 'date')}
+      <label class="ancho">Enlace<input type="url" name="enlace" value="${esc(v.enlace ?? '')}" placeholder="https://" ${ro}></label>
+      <label>Tendencia<select name="tendencia" ${ro}>${opciones(TENDENCIAS, v.tendencia || 'sin_clasificar')}</select></label>
+      ${inp('riesgo', 'Riesgo')}
+    </div>
+    ${txa('problema_juridico', 'Problema jurídico')}
+    ${txa('hechos', 'Hechos')}
+    ${txa('ratio', 'Ratio')}
+    ${txa('obiter', 'Obiter')}
+    ${txa('decisum', 'Decisum')}
+    ${txa('recomendacion', 'Recomendación')}
+    ${txa('texto_fuente', 'Texto de la fuente')}
+    <label class="check"><input type="checkbox" name="analisis_ia" ${v.analisis_ia ? 'checked' : ''} ${ro}> Análisis con apoyo de IA (requiere revisión humana)</label>
+    <div class="acciones dcha">${botones}</div>
+  </form>`);
+}
+
+async function guardarProv(form) {
+  const fd = new FormData(form);
+  const id = fd.get('id');
+  const tematica_id = vacioANull(fd.get('tematica_id'));
+  if (!tematica_id) { toast('Selecciona una temática.', true); return; }
+  const enlace = vacioANull(fd.get('enlace'));
+  if (enlace && !urlSegura(enlace)) { toast('El enlace debe empezar por http:// o https://', true); return; }
+  const cuerpo = { tematica_id: tematica_id, fuente_id: vacioANull(fd.get('fuente_id')) };
+  for (const k of TEXTOS_PROV) cuerpo[k] = vacioANull(fd.get(k));
+  cuerpo.tendencia = vacioANull(fd.get('tendencia')) || 'sin_clasificar';
+  cuerpo.analisis_ia = fd.get('analisis_ia') === 'on';
+  if (id) {
+    await q(sb.from('jr_providencias').update(cuerpo).eq('id', id));
+    toast('Providencia actualizada.');
+  } else {
+    cuerpo.creado_por = S.user.id;
+    cuerpo.estado_validacion = 'pendiente';
+    await q(sb.from('jr_providencias').insert(cuerpo));
+    toast('Providencia registrada. Queda pendiente de validación humana.');
+  }
+  cerrarModal();
+  await cargarProvidencias();
+  if (S.tab === 'repositorio') renderTab();
+}
+
+async function validarProv(id, estado) {
+  await q(sb.from('jr_providencias').update({
+    estado_validacion: estado,
+    validada_por: S.user.id,
+    validada_en: new Date().toISOString()
+  }).eq('id', id));
+  await cargarProvidencias();
+  renderTab();
+  toast(estado === 'validada' ? 'Providencia marcada como validada.' : 'Providencia marcada como rechazada.');
+}
+
+/* ================= 3. Análisis asistido ================= */
+function vistaAnalisis() {
+  return `
+  <section class="panel">
+    <h1>Análisis asistido</h1>
+    <p class="aviso">Esta pestaña no llama a ninguna IA. Copia el prompt, pégalo en el asistente que prefieras junto con la sentencia y pega aquí el JSON que devuelva.</p>
+    <label>Texto de la sentencia
+      <textarea id="an-texto" rows="10" placeholder="Pega aquí el texto completo de la providencia…"></textarea>
+    </label>
+    <div class="acciones"><button class="btn" data-accion="copiar-prompt">Copiar prompt</button></div>
+    <h2>Respuesta en JSON</h2>
+    <label>JSON devuelto
+      <textarea id="an-json" rows="10" placeholder="Pega aquí el JSON devuelto por el asistente…"></textarea>
+    </label>
+    <div class="acciones"><button class="btn" data-accion="cargar-analisis">Cargar al formulario</button></div>
+  </section>`;
+}
+
+function construirPrompt(texto) {
+  return [
+    'Eres un analista jurídico. A partir de la sentencia que aparece al final, extrae los siguientes campos y devuélvelos únicamente como un objeto JSON válido, sin texto adicional.',
+    '',
+    'Campos (todos son texto, salvo que se indique otra cosa):',
+    '- "problema_juridico": pregunta jurídica que resuelve la providencia.',
+    '- "hechos": hechos relevantes que el tribunal considera probados.',
+    '- "ratio": razón central de la decisión (regla o subregla que sustenta el decisum).',
+    '- "obiter": consideraciones adicionales que no son necesarias para la decisión.',
+    '- "decisum": resolución concreta (qué se decide u ordena).',
+    '- "tendencia": uno de estos valores exactos: "consolida", "modifica", "tension" o "sin_clasificar".',
+    '- "riesgo": riesgo para la compañía que se deriva de la providencia, en una o dos frases.',
+    '- "recomendacion": acción sugerida para la línea jurisprudencial, en una o dos frases.',
+    '',
+    'Reglas:',
+    '1. Al final de cada campo cita el párrafo de origen entre corchetes, por ejemplo: [párrafo 12]. Si un dato no aparece en el texto, escribe "No consta en la providencia".',
+    '2. No inventes datos, fechas, números de radicado, citas ni doctrina que no estén en el texto.',
+    '3. Si el texto no permite determinar la tendencia, usa "sin_clasificar".',
+    '4. Devuelve solo el JSON, con las claves exactamente como aparecen arriba.',
+    '',
+    'Sentencia:',
+    '"""',
+    texto,
+    '"""'
+  ].join('\n');
+}
+
+function extraerJSON(txt) {
+  const t = txt.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+  const i = t.indexOf('{');
+  const j = t.lastIndexOf('}');
+  if (i < 0 || j < i) throw new Error('sin-json');
+  return JSON.parse(t.slice(i, j + 1));
+}
+
+function cargarAnalisis() {
+  const txtJson = $('#an-json').value;
+  const texto = $('#an-texto').value.trim();
+  if (!txtJson.trim()) { toast('Pega primero el JSON devuelto.', true); return; }
+  let obj;
+  try { obj = extraerJSON(txtJson); }
+  catch (e) { toast('No se pudo leer el JSON. Revisa que esté completo y sin texto adicional.', true); return; }
+  const val = (k) => {
+    let x = obj[k];
+    if (x && typeof x === 'object') x = x.valor !== undefined ? x.valor : JSON.stringify(x);
+    if (Array.isArray(x)) x = x.join('\n');
+    return x === null || x === undefined ? '' : String(x);
+  };
+  const tend = norm(val('tendencia')).replace(/\s+/g, '_');
+  const prefill = {
+    problema_juridico: val('problema_juridico'), hechos: val('hechos'), ratio: val('ratio'),
+    obiter: val('obiter'), decisum: val('decisum'), riesgo: val('riesgo'), recomendacion: val('recomendacion'),
+    tendencia: TENDENCIAS.some((t) => t[0] === tend) ? tend : 'sin_clasificar',
+    texto_fuente: texto, analisis_ia: true
+  };
+  irA('repositorio').then(() => abrirFormProv(null, { prefill: prefill }));
+}
+
+/* ================= 4. Líneas ================= */
+function vistaLineas() {
+  return `
+  <section class="panel">
+    <div class="cab-panel">
+      <h1>Líneas jurisprudenciales</h1>
+      <button class="btn" data-accion="nueva-linea">Crear línea</button>
+    </div>
+    <div class="filtros">
+      <label>Temática<select data-filtro="lineas:tema">${opciones(S.tematicas.map((t) => [t.id, t.nombre]), S.filtros.lineas.tema, 'Todas')}</select></label>
+    </div>
+    <div id="lineas-lista"></div>
+  </section>`;
+}
+
+function renderLineas() {
+  const el = $('#lineas-lista');
+  if (!el) return;
+  const f = S.filtros.lineas.tema;
+  const temas = S.tematicas.filter((t) => !f || String(t.id) === f);
+  if (!temas.length) {
+    el.innerHTML = '<p class="vacio">No hay temáticas registradas. Un administrador puede crearlas en Mi cuenta.</p>';
+    return;
+  }
+  const hoy = hoyISO();
+  el.innerHTML = temas.map((t) => {
+    const ls = S.lineas.filter((l) => String(l.tematica_id) === String(t.id));
+    return `
+    <section class="grupo">
+      <h2>${esc(t.nombre)} <span class="chip">${esc(t.area || '—')}</span> ${t.priorizada ? '<span class="chip ok">Priorizada</span>' : ''}</h2>
+      ${ls.length
+        ? '<div class="tarjetas">' + ls.map((l) => tarjetaLinea(l, hoy)).join('') + '</div>'
+        : '<p class="suave">Sin línea creada.</p>'}
+    </section>`;
+  }).join('');
+}
+
+function tarjetaLinea(l, hoy) {
+  const vencida = !!l.proxima_revision && String(l.proxima_revision) < hoy;
+  return `
+  <article class="tarjeta">
+    <div class="cab-tarjeta"><h3>${esc(l.titulo)}</h3>${badgeLinea(l.estado)}</div>
+    <p class="suave">Versión ${esc(l.version || '—')} · Responsable: ${esc(l.responsable || '—')}</p>
+    <p>Criterios: <strong>${criteriosOk(l)} de ${CRITERIOS.length}</strong></p>
+    <p>Próxima revisión: ${fmtFecha(l.proxima_revision)} ${vencida ? '<span class="badge b-peligro">Vencida</span>' : ''}</p>
+    <div class="acciones"><button class="btn sec" data-accion="ficha-linea" data-id="${esc(l.id)}">Abrir ficha</button></div>
+  </article>`;
+}
+
+function abrirNuevaLinea() {
+  abrirModal('Crear línea', `
+  <form id="form-nueva-linea" class="formulario">
+    <label>Temática<select name="tematica_id" required>${opciones(S.tematicas.map((t) => [t.id, t.nombre]), '', 'Selecciona…')}</select></label>
+    <label>Título<input name="titulo" required maxlength="200"></label>
+    <div class="acciones dcha">
+      <button type="button" class="btn sec" data-accion="cerrar-modal">Cancelar</button>
+      <button class="btn" type="submit">Crear y abrir ficha</button>
+    </div>
+  </form>`);
+}
+
+async function crearLinea(form) {
+  const fd = new FormData(form);
+  const tematica_id = vacioANull(fd.get('tematica_id'));
+  const titulo = vacioANull(fd.get('titulo'));
+  if (!tematica_id || !titulo) { toast('Completa la temática y el título.', true); return; }
+  const criterios = {};
+  CRITERIOS.forEach(([k]) => { criterios[k] = false; });
+  const nueva = await q(sb.from('jr_lineas').insert({
+    tematica_id: tematica_id, titulo: titulo, version: '1', estado: 'borrador',
+    criterios: criterios, responsable: null, proxima_revision: null
+  }).select().single());
+  cerrarModal();
+  await cargarDatosBase();
+  renderTab();
+  toast('Línea creada.');
+  abrirFicha(nueva);
+}
+
+function abrirFicha(l) {
+  const puede = esValidador();
+  const c = l.criterios || {};
+  const n = criteriosOk(l);
+  const opcionesEstado = ESTADOS_LINEA.map((e) => {
+    const bloq = !puede && (e === 'aprobada' || e === 'vigente');
+    return `<option value="${e}" ${e === l.estado ? 'selected' : ''} ${bloq ? 'disabled' : ''}>${esc(ESTADOS_LINEA_TXT[e])}</option>`;
+  }).join('');
+  abrirModal('Ficha de la línea', `
+  <form id="form-ficha" class="formulario">
+    <input type="hidden" name="id" value="${esc(l.id)}">
+    <div class="grid2">
+      <label class="ancho">Título<input name="titulo" required maxlength="200" value="${esc(l.titulo || '')}"></label>
+      <label>Versión<input name="version" value="${esc(l.version || '')}"></label>
+      <label>Estado<select name="estado">${opcionesEstado}</select></label>
+      <label>Responsable<input name="responsable" value="${esc(l.responsable || '')}"></label>
+      <label>Próxima revisión<input type="date" name="proxima_revision" value="${esc(l.proxima_revision || '')}"></label>
+    </div>
+    <fieldset>
+      <legend>Criterios de completitud (${n} de ${CRITERIOS.length})</legend>
+      ${CRITERIOS.map(([k, t]) => `<label class="check"><input type="checkbox" name="c_${k}" ${c[k] === true ? 'checked' : ''}> ${esc(t)}</label>`).join('')}
+    </fieldset>
+    ${puede ? '' : '<p class="aviso">Solo un validador o administrador puede pasar la línea a Aprobada o Vigente.</p>'}
+    <div class="acciones dcha">
+      <button type="button" class="btn sec" data-accion="cerrar-modal">Cancelar</button>
+      <button class="btn" type="submit">Guardar ficha</button>
+    </div>
+  </form>`);
+}
+
+async function guardarFicha(form) {
+  const fd = new FormData(form);
+  const id = fd.get('id');
+  const l = S.lineas.find((x) => String(x.id) === String(id)) || {};
+  const puede = esValidador();
+  const titulo = vacioANull(fd.get('titulo'));
+  if (!titulo) { toast('El título es obligatorio.', true); return; }
+  const estado = fd.get('estado');
+  if (!puede && (estado === 'aprobada' || estado === 'vigente') && estado !== l.estado) {
+    toast('Solo un validador o administrador puede aprobar o marcar como vigente una línea.', true);
+    return;
+  }
+  const criterios = Object.assign({}, l.criterios || {});
+  CRITERIOS.forEach(([k]) => { criterios[k] = fd.get('c_' + k) === 'on'; });
+  const cambios = {
+    titulo: titulo,
+    version: vacioANull(fd.get('version')),
+    responsable: vacioANull(fd.get('responsable')),
+    proxima_revision: vacioANull(fd.get('proxima_revision')),
+    criterios: criterios
+  };
+  if (puede || estado !== l.estado) cambios.estado = estado;
+  await q(sb.from('jr_lineas').update(cambios).eq('id', id));
+  cerrarModal();
+  toast('Ficha guardada.');
+  await cargarDatosBase();
+  renderTab();
+}
+
+/* ================= 5. Indicador ================= */
+function vistaIndicador() {
+  const c = S.config || {};
+  const aprobado = c.denominador_aprobado === true && c.regla_completitud_aprobada === true;
+  const hoy = hoyISO();
+  const prio = S.tematicas.filter((t) => t.priorizada === true);
+  const prioIds = new Set(prio.map((t) => String(t.id)));
+  const cumplen = new Set(S.lineas
+    .filter((l) => prioIds.has(String(l.tematica_id)) && cumpleLinea(l, hoy))
+    .map((l) => String(l.tematica_id)));
+
+  let resumen;
+  if (aprobado) {
+    if (prio.length) {
+      const pct = Math.round((cumplen.size / prio.length) * 1000) / 10;
+      resumen = `<div class="kpi">
+        <span class="kpi-num">${pct.toLocaleString('es', { maximumFractionDigits: 1 })} %</span>
+        <span class="suave">${cumplen.size} de ${prio.length} temáticas priorizadas con línea completa, aprobada o vigente y con revisión no vencida.</span>
+      </div>`;
+    } else {
+      resumen = '<p class="vacio">No hay temáticas priorizadas.</p>';
+    }
+  } else {
+    resumen = '<div class="kpi aviso-kpi"><span>Sin porcentaje: falta aprobar el denominador y la regla de completitud</span></div>';
+  }
+
+  const admin = esAdmin() ? `
+    <div class="bloque">
+      <h2>Aprobaciones (administrador)</h2>
+      <label class="check"><input type="checkbox" data-config="denominador_aprobado" ${c.denominador_aprobado === true ? 'checked' : ''}> Denominador aprobado (temáticas priorizadas)</label>
+      <label class="check"><input type="checkbox" data-config="regla_completitud_aprobada" ${c.regla_completitud_aprobada === true ? 'checked' : ''}> Regla de completitud aprobada</label>
+    </div>` : '';
+
+  return `
+  <section class="panel">
+    <h1>Indicador de completitud</h1>
+    ${resumen}
+    ${admin}
+    <p class="nota-fija">Nota fija: reuniones, borradores y matrices no cuentan como líneas.</p>
+    <h2>Temáticas priorizadas</h2>
+    <div class="tabla-wrap">
+      <table class="tabla">
+        <thead><tr><th>Temática</th><th>Área</th><th>Línea</th><th>Estado</th><th>Criterios</th><th>Próxima revisión</th><th>Cuenta</th></tr></thead>
+        <tbody>${filasIndicador(prio, hoy)}</tbody>
+      </table>
+    </div>
+  </section>`;
+}
+
+function filasIndicador(prio, hoy) {
+  if (!prio.length) return '<tr><td colspan="7" class="vacio">No hay temáticas priorizadas.</td></tr>';
+  return prio.map((t) => {
+    const ls = S.lineas.filter((l) => String(l.tematica_id) === String(t.id));
+    if (!ls.length) {
+      return `<tr><td>${esc(t.nombre)}</td><td>${esc(t.area || '—')}</td><td colspan="5" class="suave">Sin línea creada</td></tr>`;
+    }
+    return ls.map((l) => `
+      <tr>
+        <td>${esc(t.nombre)}</td>
+        <td>${esc(t.area || '—')}</td>
+        <td>${esc(l.titulo)}</td>
+        <td>${badgeLinea(l.estado)}</td>
+        <td>${criteriosOk(l)} de ${CRITERIOS.length}</td>
+        <td>${fmtFecha(l.proxima_revision)}</td>
+        <td>${cumpleLinea(l, hoy) ? '<span class="badge b-ok">Sí</span>' : '<span class="badge">No</span>'}</td>
+      </tr>`).join('');
+  }).join('');
+}
+
+async function guardarConfig(campo, valor) {
+  const { data, error } = await sb.from('jr_config').update({ [campo]: valor }).eq('id', 1).select();
+  if (error) throw error;
+  if (!data || !data.length) throw new Error('No existe la fila de configuración jr_config con id = 1.');
+  await cargarDatosBase();
+  renderTab();
+  toast('Configuración actualizada.');
+}
+
+/* ================= 6. Mi cuenta ================= */
+function vistaCuenta() {
+  const p = S.perfil || {};
+  let admin = '';
+  if (esAdmin()) {
+    admin = `
+    <h2>Gestión de temáticas</h2>
+    <form id="form-tematica" class="bloque">
+      <div class="grid2">
+        <label>Nombre<input name="nombre" required maxlength="200"></label>
+        <label>Área<select name="area">${opciones(AREAS.map((a) => [a, a]), 'Salud')}</select></label>
+      </div>
+      <label class="check"><input type="checkbox" name="priorizada"> Priorizada</label>
+      <div class="acciones dcha"><button class="btn" type="submit">Crear temática</button></div>
+    </form>
+    <div class="tabla-wrap">
+      <table class="tabla">
+        <thead><tr><th>Temática</th><th>Área</th><th>Priorizada</th><th>Creada por</th></tr></thead>
+        <tbody>${S.tematicas.length ? S.tematicas.map((t) => `
+          <tr>
+            <td>${esc(t.nombre)}</td>
+            <td>${esc(t.area || '—')}</td>
+            <td>${t.priorizada ? '<span class="badge b-ok">Sí</span>' : '<span class="badge">No</span>'}
+              <button class="btn sec pequeno" data-accion="toggle-prio" data-id="${esc(t.id)}">${t.priorizada ? 'Quitar prioridad' : 'Priorizar'}</button></td>
+            <td>${esc(nombreDe(t.creado_por))}</td>
+          </tr>`).join('') : '<tr><td colspan="4" class="vacio">Sin temáticas.</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+    <h2>Roles de usuarios</h2>
+    <div class="tabla-wrap">
+      <table class="tabla">
+        <thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th></th></tr></thead>
+        <tbody>${S.perfiles.length ? S.perfiles.map((u) => `
+          <tr>
+            <td>${esc(u.nombre || '—')}</td>
+            <td>${esc(u.correo || '—')}</td>
+            <td><select data-rol-select data-id="${esc(u.id)}">${opciones(ROLES, u.rol || 'investigador')}</select></td>
+            <td><button class="btn sec pequeno" data-accion="guardar-rol" data-id="${esc(u.id)}">Guardar rol</button></td>
+          </tr>`).join('') : '<tr><td colspan="4" class="vacio">No se pudieron cargar los usuarios.</td></tr>'}
+        </tbody>
+      </table>
+    </div>`;
+  }
+  return `
+  <section class="panel">
+    <h1>Mi cuenta</h1>
+    <div class="bloque">
+      <p><strong>Nombre:</strong> ${esc(p.nombre || '—')}</p>
+      <p><strong>Correo:</strong> ${esc(p.correo || (S.user && S.user.email) || '—')}</p>
+      <p><strong>Rol:</strong> ${esc(rolTxt(p.rol))}</p>
+    </div>
+    <div class="grid-cuenta">
+      <form id="form-nombre" class="bloque">
+        <h2>Cambiar nombre</h2>
+        <label>Nombre<input name="nombre" required maxlength="120" value="${esc(p.nombre || '')}"></label>
+        <div class="acciones dcha"><button class="btn" type="submit">Guardar nombre</button></div>
+      </form>
+      <form id="form-pass" class="bloque">
+        <h2>Cambiar contraseña</h2>
+        <label>Nueva contraseña<input type="password" name="p1" minlength="6" required autocomplete="new-password"></label>
+        <label>Repetir contraseña<input type="password" name="p2" minlength="6" required autocomplete="new-password"></label>
+        <div class="acciones dcha"><button class="btn" type="submit">Cambiar contraseña</button></div>
+      </form>
+    </div>
+    ${admin}
+  </section>`;
+}
+
+async function guardarNombre(form) {
+  const nombre = vacioANull(new FormData(form).get('nombre'));
+  if (!nombre) { toast('El nombre no puede estar vacío.', true); return; }
+  await q(sb.from('jr_perfiles').update({ nombre: nombre }).eq('id', S.user.id));
+  await q(sb.auth.updateUser({ data: { nombre: nombre } }));
+  S.perfil = Object.assign({}, S.perfil, { nombre: nombre });
+  await cargarDatosBase();
+  renderShell();
+  toast('Nombre actualizado.');
+}
+
+async function cambiarPass(form) {
+  const fd = new FormData(form);
+  const p1 = String(fd.get('p1') || '');
+  const p2 = String(fd.get('p2') || '');
+  if (p1.length < 6) { toast('La contraseña debe tener al menos 6 caracteres.', true); return; }
+  if (p1 !== p2) { toast('Las contraseñas no coinciden.', true); return; }
+  await q(sb.auth.updateUser({ password: p1 }));
+  form.reset();
+  toast('Contraseña actualizada.');
+}
+
+async function crearTematica(form) {
+  const fd = new FormData(form);
+  const nombre = vacioANull(fd.get('nombre'));
+  if (!nombre) { toast('El nombre es obligatorio.', true); return; }
+  await q(sb.from('jr_tematicas').insert({
+    nombre: nombre,
+    area: fd.get('area') || null,
+    priorizada: fd.get('priorizada') === 'on',
+    creado_por: S.user.id
+  }));
+  toast('Temática creada.');
+  await cargarDatosBase();
+  renderTab();
+}
+
+async function togglePrio(id) {
+  const t = S.tematicas.find((x) => String(x.id) === String(id));
+  if (!t) return;
+  await q(sb.from('jr_tematicas').update({ priorizada: !t.priorizada }).eq('id', id));
+  await cargarDatosBase();
+  renderTab();
+}
+
+async function guardarRol(id) {
+  const sel = Array.from(document.querySelectorAll('select[data-rol-select]')).find((s) => s.dataset.id === String(id));
+  if (!sel) return;
+  const rol = sel.value;
+  if (String(id) === String(S.user.id) && rol !== 'admin' &&
+      !confirm('Vas a quitarte el rol de administrador. ¿Deseas continuar?')) return;
+  await q(sb.from('jr_perfiles').update({ rol: rol }).eq('id', id));
+  await cargarDatosBase();
+  if (String(id) === String(S.user.id)) S.perfil = Object.assign({}, S.perfil, { rol: rol });
+  renderShell();
+  toast('Rol actualizado.');
+}
+
+/* ================= Eventos ================= */
+document.addEventListener('click', async (e) => {
+  const el = e.target.closest('[data-accion]');
+  if (!el) return;
+  const a = el.dataset.accion;
+  const id = el.dataset.id;
+  try {
+    switch (a) {
+      case 'auth-modo': S.authModo = el.dataset.modo; renderAuth(); break;
+      case 'salir': await cerrarSesion(); break;
+      case 'tab': await irA(el.dataset.tab); break;
+      case 'abrir-fuente': {
+        const f = fuenteDe(id);
+        const u = f ? urlSegura(f.url) : null;
+        if (!u) toast('Esta fuente no tiene un enlace válido.', true);
+        else window.open(u, '_blank', 'noopener');
+        break;
+      }
+      case 'copiar-frase': {
+        const f = fuenteDe(id);
+        const ok = await copiarTexto((f && f.frase_prueba) || '');
+        toast(ok ? 'Frase copiada al portapapeles.' : 'No se pudo copiar. Selecciona la frase y cópiala manualmente.', !ok);
+        break;
+      }
+      case 'registrar': {
+        await irA('repositorio');
+        abrirFormProv(null, { prefill: { fuente_id: id, tematica_id: el.dataset.tema || '' } });
+        break;
+      }
+      case 'nueva-prov': abrirFormProv(null); break;
+      case 'ver-prov': {
+        const p = S.providencias.find((x) => String(x.id) === String(id));
+        if (!p) toast('No se encontró la providencia.', true);
+        else abrirFormProv(p);
+        break;
+      }
+      case 'validar': await validarProv(id, el.dataset.estado); break;
+      case 'nueva-linea': abrirNuevaLinea(); break;
+      case 'ficha-linea': {
+        const l = S.lineas.find((x) => String(x.id) === String(id));
+        if (l) abrirFicha(l);
+        break;
+      }
+      case 'cerrar-modal': cerrarModal(); break;
+      case 'copiar-prompt': {
+        const t = $('#an-texto').value.trim();
+        if (!t) { toast('Pega primero el texto de la sentencia.', true); break; }
+        const ok = await copiarTexto(construirPrompt(t));
+        toast(ok ? 'Prompt copiado. Pégalo en tu asistente.' : 'No se pudo copiar el prompt.', !ok);
+        break;
+      }
+      case 'cargar-analisis': cargarAnalisis(); break;
+      case 'toggle-prio': await togglePrio(id); break;
+      case 'guardar-rol': await guardarRol(id); break;
+    }
+  } catch (err) {
+    toast(msgError(err), true);
+  }
+});
+
+document.addEventListener('input', onFiltro);
+document.addEventListener('change', (e) => {
+  onFiltro(e);
+  const t = e.target;
+  if (t.dataset && t.dataset.config) {
+    guardarConfig(t.dataset.config, t.checked).catch((err) => {
+      t.checked = !t.checked;
+      toast(msgError(err), true);
+    });
+  }
+});
+
+function onFiltro(e) {
+  const el = e.target;
+  if (!el.dataset || !el.dataset.filtro) return;
+  const partes = el.dataset.filtro.split(':');
+  if (partes[0] === 'repo') {
+    S.filtros.repo[partes[1]] = el.value;
+    renderRepoLista();
+  } else if (partes[0] === 'lineas') {
+    S.filtros.lineas[partes[1]] = el.value;
+    renderLineas();
+  }
+}
+
+document.addEventListener('submit', async (e) => {
+  const f = e.target;
+  e.preventDefault();
+  try {
+    switch (f.id) {
+      case 'form-auth': await enviarAuth(f); break;
+      case 'form-busqueda': {
+        const texto = String(new FormData(f).get('q') || '').trim();
+        if (!texto) { toast('Escribe un tema o frase para buscar.', true); break; }
+        S.busqueda = texto; S.buscado = true;
+        renderBusqueda();
+        break;
+      }
+      case 'form-prov': await guardarProv(f); break;
+      case 'form-ficha': await guardarFicha(f); break;
+      case 'form-nueva-linea': await crearLinea(f); break;
+      case 'form-nombre': await guardarNombre(f); break;
+      case 'form-pass': await cambiarPass(f); break;
+      case 'form-tematica': await crearTematica(f); break;
+    }
+  } catch (err) {
+    toast(msgError(err), true);
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('#modal').hidden) cerrarModal();
+});
+$('#modal').addEventListener('click', (e) => {
+  if (e.target.id === 'modal') cerrarModal();
+});
+
+if (!sb) {
+  $('#app').innerHTML = '<p class="cargando">No se pudo cargar la librería de Supabase. Revisa tu conexión y recarga la página.</p>';
+}
+})();
+</script>
+</body>
+</html>
