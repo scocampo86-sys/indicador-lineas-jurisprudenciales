@@ -169,10 +169,12 @@ legend{padding:0 6px;color:var(--texto-suave);font-size:.9rem}
 
 /* ===================== Panel (dashboard) ===================== */
 .kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-@media (min-width:860px){.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.kpis > *{min-width:0}
+.kpis > :last-child:nth-child(odd){grid-column:1/-1}
+@media (min-width:1000px){.kpis{grid-template-columns:repeat(5,minmax(0,1fr))}.kpis > :last-child:nth-child(odd){grid-column:auto}}
 .kpi{background:var(--superficie);border:1px solid var(--borde);border-radius:var(--radio);padding:16px;display:flex;flex-direction:column;gap:4px;box-shadow:var(--sombra);transition:transform .25s cubic-bezier(.2,.7,.2,1),box-shadow .25s;min-width:0}
 .kpi:hover{transform:translateY(-2px);box-shadow:var(--sombra-alta)}
-.kpi-cab{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.kpi-cab{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 .kpi-etq{font-size:.78rem;color:var(--texto-suave);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
 .kpi-ico{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:var(--acento-suave);color:var(--acento);flex:0 0 auto}
 .kpi-ico.alerta{background:var(--alerta-suave);color:var(--alerta)}
@@ -257,6 +259,23 @@ legend{padding:0 6px;color:var(--texto-suave);font-size:.9rem}
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;animation-delay:0ms !important;transition-duration:.01ms !important;scroll-behavior:auto !important}
 }
+
+/* ===================== Repositorio ===================== */
+.insignias{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.insignias .chip,.insignias .badge{font-size:.74rem}
+.tabla td .suave{overflow-wrap:anywhere}
+.enlace-ico{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:8px;border:1px solid var(--borde);background:var(--superficie);color:var(--acento);text-decoration:none;flex:0 0 auto;transition:background .2s,border-color .2s}
+.enlace-ico:hover{background:var(--superficie-2);border-color:var(--texto-suave)}
+.chips-f{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+.chip-q{display:inline-flex;align-items:center;gap:6px;max-width:100%;white-space:normal;overflow-wrap:anywhere;padding-right:4px}
+.chip-q button{background:none;border:0;color:inherit;cursor:pointer;font-size:1.05rem;line-height:1;padding:2px 5px;border-radius:5px}
+.chip-q button:hover{background:var(--superficie);color:var(--peligro)}
+.paginador{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:12px 0}
+.paginador .acciones{gap:10px}
+.datos-cap{display:grid;grid-template-columns:minmax(0,max-content) minmax(0,1fr);gap:6px 14px;margin:0;font-size:.92rem}
+.datos-cap dt{color:var(--texto-suave);font-weight:500}
+.datos-cap dd{margin:0;overflow-wrap:anywhere}
+.tabla.compacta{min-width:0}
 
 /* ===================== Móvil ===================== */
 @media (max-width:640px){
@@ -363,7 +382,8 @@ const PATHS = {
   reloj: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   bandera: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
   doc: '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/>',
-  importar: '<path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15"/>'
+  importar: '<path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15"/>',
+  enlace: '<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>'
 };
 const ico = (nombre, tam) => `<svg class="ico" width="${tam || 18}" height="${tam || 18}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${PATHS[nombre] || ''}</svg>`;
 
@@ -374,7 +394,7 @@ const S = {
   provCargadas: false, capturas: [], capTotal: 0, lotes: null, imp: imp0(),
   authModo: 'ingresar',
   busqueda: '', buscado: false,
-  filtros: { repo: { tema: '', fuente: '', estado: '', texto: '' }, lineas: { tema: '' } },
+  filtros: { repo: { tema: '', fuente: '', estado: '', texto: '', relevancia: '', seguro: '', metodo: '', lote: '', orden: 'fecha_desc', pagina: 1 }, lineas: { tema: '' } },
   tab: 'panel'
 };
 let sesionId; // undefined hasta el primer evento de sesión
@@ -735,7 +755,23 @@ async function cargarDatosBase() {
 }
 
 async function cargarProvidencias() {
-  S.providencias = await leer(sb.from('jr_providencias').select('*').order('fecha', { ascending: false, nullsFirst: false }), []) || [];
+  // PostgREST devuelve como mucho 1000 filas por petición: se pide por rangos hasta agotar la tabla.
+  const TAM = 1000;
+  const todas = [];
+  try {
+    for (let desde = 0; ; desde += TAM) {
+      const { data, error } = await sb.from('jr_providencias').select('*')
+        .order('fecha', { ascending: false, nullsFirst: false }).order('id', { ascending: true })
+        .range(desde, desde + TAM - 1);
+      if (error) throw error;
+      const bloque = data || [];
+      todas.push(...bloque);
+      if (bloque.length < TAM) break;
+    }
+  } catch (e) {
+    toast(msgError(e), true);
+  }
+  S.providencias = todas;
   S.provCargadas = true;
 }
 
@@ -860,7 +896,7 @@ async function irA(tab) {
   const cargas = [];
   if ((tab === 'panel' || tab === 'repositorio') && !S.provCargadas) cargas.push(cargarProvidencias());
   if (tab === 'panel' || tab === 'buscador' || tab === 'importar') cargas.push(cargarCapturas());
-  if (tab === 'importar') cargas.push(cargarLotes());
+  if (tab === 'importar' || (tab === 'repositorio' && !S.lotes)) cargas.push(cargarLotes());
   if (cargas.length) {
     renderTab(); // muestra el estado de carga
     await Promise.all(cargas);
@@ -1111,7 +1147,7 @@ function vistaPanel() {
         ${ultimasHtml}
       </article>
     </div>
-    <div class="dash">${tarjetaCobertura()}</div>
+    <div class="dash dash-2">${tarjetaCalidad(provs)}${tarjetaCobertura()}</div>
   </section>`;
 }
 
@@ -1275,6 +1311,31 @@ function renderBusqCapturas() {
 }
 
 // Panel: última captura de cada fuente, a partir de las últimas 200 capturas.
+// Calidad de la base: porcentaje de providencias con cada atributo clave.
+function tarjetaCalidad(provs) {
+  const total = provs.length;
+  if (!total) return '<article class="tarjeta"><h2>Calidad de la base</h2><p class="vacio">Sin providencias para medir.</p></article>';
+  const filas = [
+    { etq: 'Con relevancia clasificada', n: provs.filter((p) => !!relevanciaDe(p)).length },
+    { etq: 'Con enlace directo', n: provs.filter((p) => !!enlaceDe(p)).length },
+    { etq: 'Con seguro de cumplimiento', n: provs.filter((p) => metaBool(p, 'seguro_cumplimiento')).length },
+    { etq: 'Pendientes de validación', n: provs.filter((p) => estadoValDe(p) === 'pendiente').length }
+  ];
+  return `
+  <article class="tarjeta">
+    <h2>Calidad de la base</h2>
+    <p class="suave">Porcentaje de las ${esc(total)} providencias que tienen cada atributo.</p>
+    <ol class="barras">${filas.map((f) => {
+      const pct = Math.round((f.n / total) * 1000) / 10;
+      const txt = `${f.etq}: ${f.n} de ${total} (${fmtPct(pct)} %)`;
+      return `<li class="barra" tabindex="0" title="${esc(txt)}" aria-label="${esc(txt)}">
+        <div class="barra-cab"><span class="barra-etq">${esc(f.etq)}</span><span class="barra-val">${esc(f.n)} · ${esc(fmtPct(pct))} %</span></div>
+        <div class="barra-pista"><span class="barra-fill" style="--p:${(f.n / total).toFixed(4)}"></span></div>
+      </li>`;
+    }).join('')}</ol>
+  </article>`;
+}
+
 function tarjetaCobertura() {
   let cuerpo;
   if (!S.capturas.length) {
@@ -1702,55 +1763,265 @@ function descargarPlantilla() {
 }
 
 /* ================= 2. Repositorio ================= */
+/* REPO-PURO:INICIO (funciones puras del Repositorio: sin DOM ni red) */
+const REL_TXT = { alta: 'Alta', media: 'Media', baja: 'Baja', sin: 'Sin clasificar' };
+const ORDENES_REPO = [['fecha_desc', 'Fecha (más reciente)'], ['fecha_asc', 'Fecha (más antigua)'], ['corp_asc', 'Corporación (A–Z)'], ['corp_desc', 'Corporación (Z–A)']];
+const TAM_PAGINA = 50;
+const COLATOR_ES = new Intl.Collator('es', { sensitivity: 'base', numeric: true });
+const CAB_CSV = ['fuente', 'corporacion', 'jurisdiccion', 'numero', 'fecha', 'identificador_origen', 'enlace',
+  'relevancia', 'seguro_cumplimiento', 'estado_validacion', 'tendencia'];
+
+// Valor de un metadato como texto: primitivos tal cual, objetos en JSON, nulos vacíos.
+function valorMeta(v) {
+  if (v === null || v === undefined) return '';
+  return typeof v === 'object' ? JSON.stringify(v) : String(v);
+}
+// Metadato booleano (true o "true").
+function metaBool(p, clave) {
+  const v = p && p.metadatos ? p.metadatos[clave] : null;
+  return v === true || v === 'true';
+}
+// Relevancia normalizada ('alta', 'media' o 'baja'), o null si no está clasificada.
+function relevanciaDe(p) {
+  const r = norm(p && p.metadatos ? p.metadatos.relevancia : '');
+  return (r === 'alta' || r === 'media' || r === 'baja') ? r : null;
+}
+// Enlace directo válido (url_origen o enlace), o null.
+function enlaceDe(p) {
+  return urlSegura(p && p.url_origen) || urlSegura(p && p.enlace) || null;
+}
+// Texto sobre el que busca el filtro de texto: identificador, número, corporación, textos y metadatos (ponente, expediente...).
+function textoBusquedaProv(p) {
+  return norm([p.identificador_origen, p.numero, p.corporacion, p.jurisdiccion, p.problema_juridico, p.hechos,
+    p.ratio, p.obiter, p.decisum, p.recomendacion, JSON.stringify(p.metadatos || {})].join(' '));
+}
+// Filtros del Repositorio. f = { tema, fuente, estado, texto, relevancia, seguro, metodo, lote }; cadena vacía = sin filtrar.
+function filtrarProvidencias(lista, f) {
+  const txt = norm(f.texto);
+  return lista.filter((p) =>
+    (!f.tema || String(p.tematica_id) === f.tema) &&
+    (!f.fuente || String(p.fuente_id) === f.fuente) &&
+    (!f.estado || p.estado_validacion === f.estado) &&
+    (!f.relevancia || (f.relevancia === 'sin' ? !relevanciaDe(p) : relevanciaDe(p) === f.relevancia)) &&
+    (!f.seguro || metaBool(p, 'seguro_cumplimiento')) &&
+    (!f.metodo || p.metodo_captura === f.metodo) &&
+    (!f.lote || String(p.lote_id) === f.lote) &&
+    (!txt || textoBusquedaProv(p).includes(txt)));
+}
+// Ordena una copia. Las filas sin fecha o sin corporación van siempre al final.
+function ordenarProvidencias(lista, orden) {
+  const vacio = (v) => v === null || v === undefined || v === '';
+  const porCampo = (campo, dir) => (a, b) => {
+    const va = a[campo], vb = b[campo];
+    if (vacio(va) && vacio(vb)) return 0;
+    if (vacio(va)) return 1;
+    if (vacio(vb)) return -1;
+    let c;
+    if (campo === 'fecha') c = String(va) < String(vb) ? -1 : (String(va) > String(vb) ? 1 : 0);
+    else c = COLATOR_ES.compare(String(va), String(vb));
+    return dir * c;
+  };
+  const reglas = {
+    fecha_desc: porCampo('fecha', -1), fecha_asc: porCampo('fecha', 1),
+    corp_asc: porCampo('corporacion', 1), corp_desc: porCampo('corporacion', -1)
+  };
+  return lista.slice().sort(reglas[orden] || reglas.fecha_desc);
+}
+// Divide en páginas. Devuelve la página pedida (acotada al rango válido) y el rango mostrado.
+function paginar(lista, pagina, tam) {
+  const total = lista.length;
+  const paginas = Math.max(1, Math.ceil(total / tam));
+  const n = Math.min(Math.max(1, Math.floor(Number(pagina)) || 1), paginas);
+  const ini = (n - 1) * tam;
+  return {
+    items: lista.slice(ini, ini + tam), pagina: n, paginas: paginas, total: total,
+    desde: total ? ini + 1 : 0, hasta: Math.min(ini + tam, total)
+  };
+}
+// Evita la inyección de fórmulas: prefija con apóstrofo las celdas que empiezan por = + - @ tabulador o retorno.
+function protegerFormula(v) {
+  const s = (v === null || v === undefined) ? '' : String(v);
+  return /^[=+\-@\t\r]/.test(s) ? "'" + s : s;
+}
+// CSV del Repositorio: BOM UTF-8, CRLF, comillas escapadas y protección de fórmulas. nombreFuente(id) da el nombre de la fuente.
+function csvProvidencias(lista, nombreFuente) {
+  const filas = lista.map((p) => {
+    const seg = metaBool(p, 'seguro_cumplimiento') ? 'sí'
+      : ((p.metadatos && p.metadatos.seguro_cumplimiento !== undefined && p.metadatos.seguro_cumplimiento !== null) ? 'no' : '');
+    return [nombreFuente(p.fuente_id), p.corporacion, p.jurisdiccion, p.numero, p.fecha, p.identificador_origen,
+      p.url_origen || p.enlace, relevanciaDe(p) || '', seg, p.estado_validacion, p.tendencia];
+  });
+  return '﻿' + [CAB_CSV].concat(filas).map((f) => f.map((v) => csvEscape(protegerFormula(v))).join(',')).join('\r\n') + '\r\n';
+}
+/* REPO-PURO:FIN */
+
+const BADGE_REL = { alta: 'b-ok', media: 'b-alerta', baja: '' };
+const FILTROS_REPO = ['tema', 'fuente', 'estado', 'texto', 'relevancia', 'seguro', 'metodo', 'lote'];
+let debRepo = null;
+
+// Nombre legible de un lote: el de jr_lotes si está cargado; si no, un identificador corto.
+function loteTxt(id) {
+  const l = (S.lotes || []).find((x) => String(x.id) === String(id));
+  return l && l.nombre_archivo ? l.nombre_archivo : 'Lote ' + String(id).slice(0, 8);
+}
+
 function vistaRepo() {
   const f = S.filtros.repo;
+  const lotes = [...new Set(S.providencias.map((p) => p.lote_id).filter(Boolean).map(String))];
+  const metodos = [...new Set([...Object.keys(METODO_TXT), ...S.providencias.map((p) => p.metodo_captura).filter(Boolean)])];
   return `
   <section class="panel">
     <div class="cab-panel">
       <h1>Repositorio de providencias</h1>
-      <button class="btn" data-accion="nueva-prov">Nueva providencia</button>
+      <div class="acciones">
+        <button class="btn sec" data-accion="exportar-csv">Exportar CSV</button>
+        <button class="btn" data-accion="nueva-prov">Nueva providencia</button>
+      </div>
     </div>
     <div class="filtros">
       <label>Tema<select data-filtro="repo:tema">${opciones(S.tematicas.map((t) => [t.id, t.nombre]), f.tema, 'Todos')}</select></label>
       <label>Fuente<select data-filtro="repo:fuente">${opciones(S.fuentes.map((x) => [x.id, x.nombre]), f.fuente, 'Todas')}</select></label>
       <label>Validación<select data-filtro="repo:estado">${opciones([['pendiente', 'Pendiente'], ['validada', 'Validada'], ['rechazada', 'Rechazada']], f.estado, 'Todas')}</select></label>
-      <label class="ancho">Texto<input type="search" data-filtro="repo:texto" value="${esc(f.texto)}" placeholder="Corporación, número, hechos, ratio…"></label>
+      <label>Relevancia<select data-filtro="repo:relevancia">${opciones([['alta', 'Alta'], ['media', 'Media'], ['baja', 'Baja'], ['sin', 'Sin clasificar']], f.relevancia, 'Todas')}</select></label>
+      <label>Método de captura<select data-filtro="repo:metodo">${opciones(metodos.map((m) => [m, METODO_TXT[m] || m]), f.metodo, 'Todos')}</select></label>
+      <label>Lote<select data-filtro="repo:lote">${opciones(lotes.map((id) => [id, loteTxt(id)]), f.lote, 'Todos')}</select></label>
+      <label>Ordenar por<select data-filtro="repo:orden">${opciones(ORDENES_REPO, f.orden)}</select></label>
+      <label class="check"><input type="checkbox" data-filtro="repo:seguro" ${f.seguro ? 'checked' : ''}> Solo seguro de cumplimiento</label>
+      <label class="ancho">Texto<input type="search" data-filtro="repo:texto" value="${esc(f.texto)}" placeholder="Corporación, número, identificador, ponente, expediente, hechos, ratio…" autocomplete="off"></label>
     </div>
     <div id="repo-lista"></div>
   </section>`;
 }
 
-function providenciasFiltradas() {
+// Chips de los filtros activos, cada uno con botón para quitarlo.
+function chipsRepo(f) {
+  const chips = [];
+  const add = (clave, etiq, valor) => {
+    const txt = valor === null ? etiq : etiq + ': ' + valor;
+    chips.push(`<span class="chip chip-q">${esc(txt)}<button type="button" data-accion="quitar-filtro" data-filtro="${esc(clave)}" aria-label="Quitar filtro ${esc(txt)}">×</button></span>`);
+  };
+  if (f.tema) { const t = tematicaDe(f.tema); add('tema', 'Tema', t ? t.nombre : 'no disponible'); }
+  if (f.fuente) { const x = fuenteDe(f.fuente); add('fuente', 'Fuente', x ? x.nombre : 'no disponible'); }
+  if (f.estado) add('estado', 'Validación', ESTADO_VAL_TXT[f.estado] || f.estado);
+  if (f.relevancia) add('relevancia', 'Relevancia', REL_TXT[f.relevancia] || f.relevancia);
+  if (f.metodo) add('metodo', 'Método', METODO_TXT[f.metodo] || f.metodo);
+  if (f.lote) add('lote', 'Lote', loteTxt(f.lote));
+  if (f.seguro) add('seguro', 'Solo seguro de cumplimiento', null);
+  if (f.texto) add('texto', 'Texto', '«' + f.texto + '»');
+  if (!chips.length) return '';
+  return `<div class="chips-f" aria-label="Filtros activos">${chips.join('')}<button type="button" class="btn sec pequeno" data-accion="limpiar-filtros">Limpiar filtros</button></div>`;
+}
+
+function htmlPaginador(pg) {
+  return `
+  <nav class="paginador" aria-label="Paginación del repositorio">
+    <span class="suave num">Mostrando ${esc(pg.desde)}–${esc(pg.hasta)} de ${esc(pg.total)}</span>
+    <div class="acciones">
+      <button type="button" class="btn sec pequeno" data-accion="rep-pag" data-pag="ant" ${pg.pagina <= 1 ? 'disabled' : ''}>Anterior</button>
+      <span class="num">Página ${esc(pg.pagina)} de ${esc(pg.paginas)}</span>
+      <button type="button" class="btn sec pequeno" data-accion="rep-pag" data-pag="sig" ${pg.pagina >= pg.paginas ? 'disabled' : ''}>Siguiente</button>
+    </div>
+  </nav>`;
+}
+
+// Sección "Datos de captura" del modal: se añade bajo el formulario, que no cambia.
+function htmlDatosCaptura(p) {
+  const meta = p.metadatos && typeof p.metadatos === 'object' && !Array.isArray(p.metadatos) ? p.metadatos : {};
+  const claves = Object.keys(meta);
+  const fila = (etq, val) => `<dt>${esc(etq)}</dt><dd>${esc(val)}</dd>`;
+  const captura = p.fecha_captura ? new Date(p.fecha_captura) : null;
+  const cuando = captura && !isNaN(captura) ? captura.toLocaleString('es', { dateStyle: 'medium', timeStyle: 'short' }) : (p.fecha_captura || '—');
+  return `
+  <section class="bloque" style="margin-top:16px" aria-labelledby="datos-cap-tit">
+    <h2 id="datos-cap-tit">Datos de captura</h2>
+    <dl class="datos-cap">
+      ${fila('Identificador de origen', p.identificador_origen || '—')}
+      ${fila('Método', p.metodo_captura ? (METODO_TXT[p.metodo_captura] || p.metodo_captura) : '—')}
+      ${fila('Fecha de captura', cuando)}
+      ${fila('Lote', p.lote_id ? loteTxt(p.lote_id) : '—')}
+    </dl>
+    <h3 style="margin:4px 0 0;font-size:.92rem">Metadatos</h3>
+    ${claves.length
+      ? `<div class="tabla-wrap"><table class="tabla compacta"><thead><tr><th>Clave</th><th>Valor</th></tr></thead><tbody>${claves.map((k) => `<tr><td>${esc(k)}</td><td>${esc(valorMeta(meta[k]) || '—')}</td></tr>`).join('')}</tbody></table></div>`
+      : '<p class="suave">Sin metadatos.</p>'}
+  </section>`;
+}
+
+function sincronizarControlesRepo() {
   const f = S.filtros.repo;
-  const txt = norm(f.texto);
-  return S.providencias.filter((p) =>
-    (!f.tema || String(p.tematica_id) === f.tema) &&
-    (!f.fuente || String(p.fuente_id) === f.fuente) &&
-    (!f.estado || p.estado_validacion === f.estado) &&
-    (!txt || norm([p.corporacion, p.numero, p.jurisdiccion, p.problema_juridico, p.hechos, p.ratio, p.obiter, p.decisum, p.recomendacion].join(' ')).includes(txt))
-  );
+  document.querySelectorAll('[data-filtro^="repo:"]').forEach((el) => {
+    const clave = el.dataset.filtro.split(':')[1];
+    if (el.type === 'checkbox') el.checked = !!f[clave];
+    else el.value = f[clave] || '';
+  });
+}
+
+function quitarFiltro(clave) {
+  if (!FILTROS_REPO.includes(clave)) return;
+  S.filtros.repo[clave] = '';
+  S.filtros.repo.pagina = 1;
+  clearTimeout(debRepo);
+  sincronizarControlesRepo();
+  renderRepoLista();
+}
+
+function limpiarFiltrosRepo() {
+  FILTROS_REPO.forEach((k) => { S.filtros.repo[k] = ''; });
+  S.filtros.repo.pagina = 1;
+  clearTimeout(debRepo);
+  sincronizarControlesRepo();
+  renderRepoLista();
+}
+
+function cambiarPaginaRepo(dir) {
+  S.filtros.repo.pagina += dir === 'sig' ? 1 : -1;
+  renderRepoLista();
+  const b = document.querySelector('#repo-lista [data-accion="rep-pag"]:not([disabled])');
+  if (b) b.focus({ preventScroll: true });
+  const lista = $('#repo-lista');
+  if (lista) lista.scrollIntoView({ block: 'start' });
 }
 
 function renderRepoLista() {
   const el = $('#repo-lista');
   if (!el) return;
   if (!S.provCargadas) {
-    el.innerHTML = '<p class="cargando"><span class="spinner" aria-hidden="true"></span> Cargando providencias…</p>';
+    const esqueletos = '<div class="esqueleto" aria-hidden="true" style="min-height:56px;margin-top:12px"></div>'.repeat(4);
+    el.innerHTML = esqueletos + '<p class="suave" role="status" style="margin-top:12px">Cargando providencias…</p>';
     return;
   }
-  const lista = providenciasFiltradas();
-  if (!lista.length) {
-    el.innerHTML = '<p class="vacio">No hay providencias que coincidan con los filtros.</p>';
+  const f = S.filtros.repo;
+  const filtradas = ordenarProvidencias(filtrarProvidencias(S.providencias, f), f.orden);
+  const pg = paginar(filtradas, f.pagina, TAM_PAGINA);
+  f.pagina = pg.pagina;
+  const conteo = `<p class="conteo" style="margin:12px 0 0">${esc(filtradas.length)} ${filtradas.length === 1 ? 'resultado' : 'resultados'} de ${esc(S.providencias.length)} providencias</p>`;
+  if (!filtradas.length) {
+    el.innerHTML = chipsRepo(f) + conteo + '<p class="vacio" style="margin-top:12px">No hay providencias que coincidan con los filtros.</p>';
     return;
   }
-  el.innerHTML = `
-    <p class="conteo" style="margin:12px 0 8px">${lista.length} de ${S.providencias.length} providencias</p>
+  el.innerHTML = chipsRepo(f) + conteo + htmlPaginador(pg) + `
     <div class="tabla-wrap">
       <table class="tabla">
         <thead><tr><th>Providencia</th><th>Tema</th><th>Fuente</th><th>Tendencia</th><th>Validación</th><th></th></tr></thead>
-        <tbody>${lista.map(filaProv).join('')}</tbody>
+        <tbody>${pg.items.map(filaProv).join('')}</tbody>
       </table>
-    </div>`;
+    </div>` + htmlPaginador(pg);
+}
+
+function exportarRepo() {
+  const f = S.filtros.repo;
+  const lista = ordenarProvidencias(filtrarProvidencias(S.providencias, f), f.orden);
+  if (!lista.length) { toast('No hay providencias que exportar con estos filtros.', true); return; }
+  const contenido = csvProvidencias(lista, (id) => { const x = fuenteDe(id); return x ? x.nombre : ''; });
+  const url = URL.createObjectURL(new Blob([contenido], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'providencias-' + hoyISO() + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast(`CSV exportado con ${lista.length} ${lista.length === 1 ? 'providencia' : 'providencias'}.`);
 }
 
 function filaProv(p) {
@@ -1763,12 +2034,27 @@ function filaProv(p) {
     if (p.estado_validacion !== 'validada') acc += ` <button class="btn sec pequeno" data-accion="validar" data-id="${id}" data-estado="validada">Marcar como validada</button>`;
     if (p.estado_validacion !== 'rechazada') acc += ` <button class="btn sec pequeno peligro-txt" data-accion="validar" data-id="${id}" data-estado="rechazada">Marcar como rechazada</button>`;
   }
-  const pendiente = p.estado_validacion === 'pendiente';
+  const enl = enlaceDe(p);
+  const rotulo = p.numero || p.identificador_origen || 'providencia';
+  const accEnl = enl
+    ? `<a class="enlace-ico" href="${esc(enl)}" target="_blank" rel="noopener noreferrer" title="Abrir fuente (se abre en otra pestaña)" aria-label="Abrir enlace de ${esc(rotulo)} (se abre en otra pestaña)">${ico('enlace', 15)}</a>`
+    : '<span class="suave">Sin enlace directo</span>';
+  const rel = relevanciaDe(p);
+  const ponente = valorMeta(p.metadatos && p.metadatos.ponente);
+  const expediente = valorMeta(p.metadatos && p.metadatos.expediente);
+  const secundario = [ponente ? 'Ponente: ' + ponente : '', expediente ? 'Expediente: ' + expediente : ''].filter(Boolean);
+  const insignias = [
+    rel ? `<span class="badge ${BADGE_REL[rel]}">Relevancia ${esc(REL_TXT[rel])}</span>` : '',
+    metaBool(p, 'frase_exacta') ? '<span class="chip">Frase exacta</span>' : '',
+    metaBool(p, 'seguro_cumplimiento') ? '<span class="chip ok">Seguro de cumplimiento</span>' : ''
+  ].filter(Boolean).join('');
   return `
   <tr>
     <td>
       <strong>${esc(p.corporacion || 'Sin corporación')}</strong>${p.numero ? ' · ' + esc(p.numero) : ''}<br>
       <span class="suave">${esc(p.jurisdiccion || '')}${p.fecha ? ' · ' + fmtFecha(p.fecha) : ''}</span>
+      ${secundario.length ? '<br><span class="suave">' + esc(secundario.join(' · ')) + '</span>' : ''}
+      ${insignias ? '<div class="insignias">' + insignias + '</div>' : ''}
       ${p.analisis_ia ? '<br><span class="chip">Generado con apoyo de IA</span>' : ''}
     </td>
     <td>${esc(t ? t.nombre : '—')}</td>
@@ -1776,10 +2062,10 @@ function filaProv(p) {
     <td>${esc(tendTxt(p.tendencia))}</td>
     <td>
       ${badgeVal(p.estado_validacion)}
-      ${pendiente ? '<div class="aviso-pend">Pendiente de validación humana</div>' : ''}
+      ${p.estado_validacion === 'pendiente' ? '<div class="aviso-pend">Pendiente de validación humana</div>' : ''}
       ${p.validada_por ? '<div class="suave">por ' + esc(nombreDe(p.validada_por)) + '</div>' : ''}
     </td>
-    <td class="acc">${acc}</td>
+    <td class="acc"><div class="acciones">${acc}${accEnl}</div></td>
   </tr>`;
 }
 
@@ -1821,7 +2107,7 @@ function abrirFormProv(p, opts) {
     ${txa('texto_fuente', 'Texto de la fuente')}
     <label class="check"><input type="checkbox" name="analisis_ia" ${v.analisis_ia ? 'checked' : ''} ${ro}> Análisis con apoyo de IA (requiere revisión humana)</label>
     <div class="acciones dcha">${botones}</div>
-  </form>`);
+  </form>${p ? htmlDatosCaptura(p) : ''}`);
 }
 
 async function guardarProv(form) {
@@ -2325,6 +2611,10 @@ document.addEventListener('click', async (e) => {
       case 'cargar-analisis': cargarAnalisis(); break;
       case 'toggle-prio': await togglePrio(id); break;
       case 'guardar-rol': await guardarRol(id); break;
+      case 'exportar-csv': exportarRepo(); break;
+      case 'quitar-filtro': quitarFiltro(el.dataset.filtro); break;
+      case 'limpiar-filtros': limpiarFiltrosRepo(); break;
+      case 'rep-pag': cambiarPaginaRepo(el.dataset.pag); break;
     }
   } catch (err) {
     toast(msgError(err), true);
@@ -2352,8 +2642,16 @@ function onFiltro(e) {
   if (!el.dataset || !el.dataset.filtro) return;
   const partes = el.dataset.filtro.split(':');
   if (partes[0] === 'repo') {
-    S.filtros.repo[partes[1]] = el.value;
-    renderRepoLista();
+    const f = S.filtros.repo;
+    f[partes[1]] = el.type === 'checkbox' ? (el.checked ? '1' : '') : el.value;
+    f.pagina = 1;
+    if (partes[1] === 'texto') {
+      // Debounce de 200 ms: no se repinta la lista en cada pulsación.
+      clearTimeout(debRepo);
+      debRepo = setTimeout(renderRepoLista, 200);
+    } else {
+      renderRepoLista();
+    }
   } else if (partes[0] === 'lineas') {
     S.filtros.lineas[partes[1]] = el.value;
     renderLineas();
